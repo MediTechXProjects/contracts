@@ -20,8 +20,8 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
     uint256 public constant MAX_SUPPLY = 10_000_000_000 * 10**18; // 10 billion tokens
     
     // Transfer limits (based on 10 billion total supply)
-    uint256 public MAX_WALLET_BALANCE = 100_000_000 * 10**18; // 1% of 10 billion (100 million tokens)
-    uint256 public MAX_TRANSFER_AMOUNT = 5_000_000 * 10**18;  // 0.05% of 10 billion (5 million tokens)
+    uint256 public maxWalletBalance = 100_000_000 * 10**18; // 1% of 10 billion (100 million tokens)
+    uint256 public maxTransferAmount = 5_000_000 * 10**18;  // 0.05% of 10 billion (5 million tokens)
 
 
     // Blacklist mapping
@@ -45,10 +45,10 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
     
     
     // Rate limiting parameters
-    uint256 public MAX_TXS_PER_WINDOW = 3; // Max transactions per 15 minutes
-    uint256 public WINDOW_SIZE = 15 minutes; // 15 minute window
-    uint256 public MIN_TX_INTERVAL = 1 minutes; // Minimum time between transactions
-    uint256 public MAX_TXS_PER_BLOCK = 2; // Max transactions per block
+    uint256 public maxTxsPerWindow = 3; // Max transactions per 15 minutes
+    uint256 public windowSize = 15 minutes; // 15 minute window
+    uint256 public minTxInterval = 1 minutes; // Minimum time between transactions
+    uint256 public maxTxsPerBlock = 2; // Max transactions per block
     
     // Rate limiting state
     struct RateLimit {
@@ -202,8 +202,8 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      */
     function setTransferLimits(uint256 _maxWalletBalance, uint256 _maxTransferAmount) external onlyManager {
    
-        MAX_WALLET_BALANCE = _maxWalletBalance;
-        MAX_TRANSFER_AMOUNT = _maxTransferAmount;
+        maxWalletBalance = _maxWalletBalance;
+        maxTransferAmount = _maxTransferAmount;
         
         emit TransferLimitsUpdated(_maxWalletBalance, _maxTransferAmount);
     }
@@ -222,10 +222,10 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
         uint256 _maxTxsPerBlock
     ) external onlyManager {
 
-        MAX_TXS_PER_WINDOW = _maxTxsPerWindow;
-        WINDOW_SIZE = _windowSize;
-        MIN_TX_INTERVAL = _minTxInterval;
-        MAX_TXS_PER_BLOCK = _maxTxsPerBlock;
+        maxTxsPerWindow = _maxTxsPerWindow;
+        windowSize = _windowSize;
+        minTxInterval = _minTxInterval;
+        maxTxsPerBlock = _maxTxsPerBlock;
         
         emit RateLimitingParamsUpdated(_maxTxsPerWindow, _windowSize, _minTxInterval, _maxTxsPerBlock);
     }
@@ -252,7 +252,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
         uint256 currentBlock = block.number;
         
         if (checkTxInterval) {
-            require(currentTime >= rl.lastTxTime + MIN_TX_INTERVAL,
+            require(currentTime >= rl.lastTxTime + minTxInterval,
                 "MTXToken: must wait 1 minute between transactions");
         }
         
@@ -264,20 +264,20 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
                 rl.lastTxBlock = currentBlock;
             }
             
-            require(rl.blockTxCount <= MAX_TXS_PER_BLOCK,
+            require(rl.blockTxCount <= maxTxsPerBlock,
                 "MTXToken: exceeded transactions per block limit");
         }
         
         // Check transactions per window limit (if enabled)
         if (checkWindowTxLimit) {
 
-            if (currentTime > rl.windowStart + WINDOW_SIZE) {
+            if (currentTime > rl.windowStart + windowSize) {
                 rl.windowStart = currentTime;
                 rl.txCount = 0;
             }
 
             rl.txCount += 1;
-            require(rl.txCount <= MAX_TXS_PER_WINDOW,
+            require(rl.txCount <= maxTxsPerWindow,
                 "MTXToken: exceeded transactions per window limit");
         }
         
@@ -303,14 +303,14 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
                 
                 if(!whitelisted[to]){
                     if (checkMaxWalletBalance) { // Not a mint operation
-                        require(balanceOf(to) + value <= MAX_WALLET_BALANCE, "MTXToken: recipient would exceed maximum wallet balance");
+                        require(balanceOf(to) + value <= maxWalletBalance, "MTXToken: recipient would exceed maximum wallet balance");
                     }
                 }
 
                 if(!whitelisted[from]){
 
                     if(checkMaxTransfer){
-                        require(value <= MAX_TRANSFER_AMOUNT, "MTXToken: transfer amount exceeds maximum allowed");
+                        require(value <= maxTransferAmount, "MTXToken: transfer amount exceeds maximum allowed");
                     }
                     
                     _checkRateLimit(from);                    
