@@ -10,6 +10,7 @@ import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 import { IMTXToken } from "./IMTXToken.sol";
 import { AccessRestriction } from "../accessRistriction/AccessRestriction.sol";
+import "forge-std/console.sol";
 
 /// @notice OFT is an ERC-20 token that extends the OFTCore contract.
 contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
@@ -32,7 +33,6 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
     
     
     // Rate limiting control flags
-    bool public checkWindowSize = true;
     bool public checkTxInterval = true;
     bool public checkBlockTxLimit = true;
     bool public checkWindowTxLimit = true;
@@ -140,14 +140,6 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
     }
 
     /**
-     * @notice Enable or disable window size check
-     * @param enabled True to enable window size check, false to disable
-     */
-    function setCheckWindowSize(bool enabled) external onlyManager {
-        checkWindowSize = enabled;
-    }
-
-    /**
      * @notice Enable or disable transaction interval check
      * @param enabled True to enable interval check, false to disable
      */
@@ -202,6 +194,9 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      */
     function setTransferLimits(uint256 _maxWalletBalance, uint256 _maxTransferAmount) external onlyManager {
    
+        require(_maxWalletBalance > 0, "MTXToken: max wallet balance must be greater than 0");
+        require(_maxTransferAmount > 0, "MTXToken: max transfer amount must be greater than 0");
+        
         maxWalletBalance = _maxWalletBalance;
         maxTransferAmount = _maxTransferAmount;
         
@@ -221,7 +216,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
         uint256 _minTxInterval,
         uint256 _maxTxsPerBlock
     ) external onlyManager {
-
+        
         maxTxsPerWindow = _maxTxsPerWindow;
         windowSize = _windowSize;
         minTxInterval = _minTxInterval;
@@ -250,7 +245,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
         
         uint256 currentTime = block.timestamp;
         uint256 currentBlock = block.number;
-        
+
         if (checkTxInterval) {
             require(currentTime >= rl.lastTxTime + minTxInterval,
                 "MTXToken: must wait 1 minute between transactions");
@@ -264,7 +259,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
                 rl.lastTxBlock = currentBlock;
             }
             
-            require(rl.blockTxCount <= maxTxsPerBlock,
+            require(rl.blockTxCount < maxTxsPerBlock,
                 "MTXToken: exceeded transactions per block limit");
         }
         
