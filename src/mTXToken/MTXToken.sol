@@ -49,11 +49,13 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
     uint256 public windowSize = 15 minutes; // 15 minute window
     uint256 public minTxInterval = 1 minutes; // Minimum time between transactions
     uint256 public maxTxsPerBlock = 2; // Max transactions per block
+    uint256 public maxAmountPerWindow = 100_000_000 * 10**18; // Max transferable amount per window
     
     // Rate limiting state
     struct RateLimit {
         uint256 windowStart;
         uint256 txCount;
+        uint256 windowAmount;
         uint256 lastTxTime;
         uint256 lastTxBlock;
         uint256 blockTxCount;
@@ -163,6 +165,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
         checkWindowTxLimit = enabled;
     }
 
+
     /**
      * @notice Enable or disable blacklist check
      * @param enabled True to enable blacklist check, false to disable
@@ -226,6 +229,16 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
     }
 
     /**
+     * @notice Set maximum transferable amount allowed per window
+     * @param _maxAmountPerWindow Maximum amount per window in token units
+     */
+    function setMaxAmountPerWindow(uint256 _maxAmountPerWindow) external onlyManager {
+        require(_maxAmountPerWindow > 0, "MTXToken: max amount per window must be greater than 0");
+        maxAmountPerWindow = _maxAmountPerWindow;
+    }
+
+
+    /**
      * @notice Permanently disable all restrictions (one-time only, admin only)
      * This function can only be called once and makes the token fully unrestricted
      */
@@ -239,7 +252,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      * @notice Private function to check and update rate limits for an address
      * @param from The address to check rate limits for
      */
-    function _checkRateLimit(address from) private {
+    function _checkRateLimit(address from, uint256 amount) private {
         
         RateLimit storage rl = rateLimits[from];
         
@@ -269,11 +282,15 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
             if (currentTime > rl.windowStart + windowSize) {
                 rl.windowStart = currentTime;
                 rl.txCount = 0;
+                rl.windowAmount = 0;
             }
 
             rl.txCount += 1;
+            rl.windowAmount += amount;
             require(rl.txCount <= maxTxsPerWindow,
                 "MTXToken: exceeded transactions per window limit");
+            require(rl.windowAmount <= maxAmountPerWindow,
+                "MTXToken: exceeded amount per window limit");
         }
         
         // Update last transaction time
@@ -308,7 +325,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
                         require(value <= maxTransferAmount, "MTXToken: transfer amount exceeds maximum allowed");
                     }
                     
-                    _checkRateLimit(from);                    
+                    _checkRateLimit(from, value);                    
                 }
             }
         }

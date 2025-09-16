@@ -468,6 +468,8 @@ contract MTXTokenTest is Test {
         token.setCheckBlockTxLimit(false);
         vm.prank(manager);
         token.setCheckTxInterval(false);
+        vm.prank(manager);
+        token.setCheckWindowTxLimit(false);
         
         vm.prank(sender);
         vm.expectRevert("MTXToken: recipient would exceed maximum wallet balance");
@@ -513,8 +515,15 @@ contract MTXTokenTest is Test {
         vm.prank(manager);
         token.setCheckMaxWalletBalance(true);
 
+        // Disable other checks to focus on maxWalletBalance
         vm.prank(manager);
         token.setCheckMaxTransfer(false);
+        vm.prank(manager);
+        token.setCheckBlockTxLimit(false);
+        vm.prank(manager);
+        token.setCheckTxInterval(false);
+        vm.prank(manager);
+        token.setCheckWindowTxLimit(false);
         
         // Regular recipient should be limited to 100 million tokens
         vm.prank(sender);
@@ -678,6 +687,418 @@ contract MTXTokenTest is Test {
         assertEq(token.balanceOf(recipient2), 1_000_000 * 10**18); // 1M from user + 1M from whitelisted
         assertEq(token.balanceOf(recipient3), 1_000_000 * 10**18); // 1M from whitelisted only
         assertEq(token.balanceOf(whitelistedUser), 7_000_000 * 10**18);
+    }
+
+    // ============ WINDOW TRANSACTION LIMIT SCENARIO TESTS ============
+
+    function testWindowTxLimitEnforcement() public {
+        address user = makeAddr("user");
+        address recipient1 = makeAddr("recipient1");
+        address recipient2 = makeAddr("recipient2");
+        address recipient3 = makeAddr("recipient3");
+        address recipient4 = makeAddr("recipient4");
+        
+        // Mint tokens to user for testing
+        vm.prank(treasury);
+        token.mint(user, 10_000_000 * 10**18);
+        
+        // Ensure windowTxLimit check is enabled
+        vm.prank(manager);
+        token.setCheckWindowTxLimit(true);
+        assertTrue(token.checkWindowTxLimit());
+        
+        // Disable other checks to focus on window limit
+        vm.prank(manager);
+        token.setCheckMaxTransfer(false);
+        vm.prank(manager);
+        token.setCheckMaxWalletBalance(false);
+        vm.prank(manager);
+        token.setCheckBlockTxLimit(false);
+        vm.prank(manager);
+        token.setCheckTxInterval(false);
+        
+        // Current max transactions per window is 3
+        assertEq(token.maxTxsPerWindow(), 3);
+        assertEq(token.windowSize(), 15 minutes);
+        
+        // First transaction in window should succeed
+        vm.prank(user);
+        token.transfer(recipient1, 1_000_000 * 10**18);
+        assertEq(token.balanceOf(recipient1), 1_000_000 * 10**18);
+        
+        // Second transaction in same window should succeed
+        vm.prank(user);
+        token.transfer(recipient2, 1_000_000 * 10**18);
+        assertEq(token.balanceOf(recipient2), 1_000_000 * 10**18);
+        
+        // Third transaction in same window should succeed
+        vm.prank(user);
+        token.transfer(recipient3, 1_000_000 * 10**18);
+        assertEq(token.balanceOf(recipient3), 1_000_000 * 10**18);
+        
+        // Fourth transaction in same window should fail
+        vm.prank(user);
+        vm.expectRevert("MTXToken: exceeded transactions per window limit");
+        token.transfer(recipient4, 1_000_000 * 10**18);
+        
+        // Verify fourth transaction failed
+        assertEq(token.balanceOf(recipient4), 0);
+        assertEq(token.balanceOf(user), 7_000_000 * 10**18);
+    }
+
+    function testWindowTxLimitDisabled() public {
+        address user = makeAddr("user");
+        address recipient1 = makeAddr("recipient1");
+        address recipient2 = makeAddr("recipient2");
+        address recipient3 = makeAddr("recipient3");
+        address recipient4 = makeAddr("recipient4");
+        address recipient5 = makeAddr("recipient5");
+        
+        // Mint tokens to user for testing
+        vm.prank(treasury);
+        token.mint(user, 10_000_000 * 10**18);
+        
+        // First, try with window limit enabled - should fail after 3 transactions
+        vm.prank(manager);
+        token.setCheckWindowTxLimit(true);
+        assertTrue(token.checkWindowTxLimit());
+        
+        // Disable other checks
+        vm.prank(manager);
+        token.setCheckMaxTransfer(false);
+        vm.prank(manager);
+        token.setCheckMaxWalletBalance(false);
+        vm.prank(manager);
+        token.setCheckBlockTxLimit(false);
+        vm.prank(manager);
+        token.setCheckTxInterval(false);
+        
+        // First three transactions should succeed
+        vm.prank(user);
+        token.transfer(recipient1, 1_000_000 * 10**18);
+        vm.prank(user);
+        token.transfer(recipient2, 1_000_000 * 10**18);
+        vm.prank(user);
+        token.transfer(recipient3, 1_000_000 * 10**18);
+        
+        // Fourth transaction should fail
+        vm.prank(user);
+        vm.expectRevert("MTXToken: exceeded transactions per window limit");
+        token.transfer(recipient4, 1_000_000 * 10**18);
+        
+        // Now disable window limit check
+        vm.prank(manager);
+        token.setCheckWindowTxLimit(false);
+        assertFalse(token.checkWindowTxLimit());
+        
+        // Now all transactions should succeed
+        vm.prank(user);
+        token.transfer(recipient4, 1_000_000 * 10**18);
+        vm.prank(user);
+        token.transfer(recipient5, 1_000_000 * 10**18);
+        
+        // Verify all transactions succeeded
+        assertEq(token.balanceOf(recipient1), 1_000_000 * 10**18);
+        assertEq(token.balanceOf(recipient2), 1_000_000 * 10**18);
+        assertEq(token.balanceOf(recipient3), 1_000_000 * 10**18);
+        assertEq(token.balanceOf(recipient4), 1_000_000 * 10**18);
+        assertEq(token.balanceOf(recipient5), 1_000_000 * 10**18);
+        assertEq(token.balanceOf(user), 5_000_000 * 10**18);
+    }
+
+    function testWindowTxLimitWithWhitelistBypass() public {
+        address user = makeAddr("user");
+        address whitelistedUser = makeAddr("whitelistedUser");
+        address recipient1 = makeAddr("recipient1");
+        address recipient2 = makeAddr("recipient2");
+        address recipient3 = makeAddr("recipient3");
+        address recipient4 = makeAddr("recipient4");
+        
+        // Mint tokens to both users
+        vm.prank(treasury);
+        token.mint(user, 10_000_000 * 10**18);
+        vm.prank(treasury);
+        token.mint(whitelistedUser, 10_000_000 * 10**18);
+        
+        // Add whitelistedUser to whitelist
+        vm.prank(manager);
+        token.addToWhitelist(whitelistedUser);
+        assertTrue(token.whitelisted(whitelistedUser));
+        
+        // Ensure windowTxLimit check is enabled
+        vm.prank(manager);
+        token.setCheckWindowTxLimit(true);
+        
+        // Disable other checks
+        vm.prank(manager);
+        token.setCheckMaxTransfer(false);
+        vm.prank(manager);
+        token.setCheckMaxWalletBalance(false);
+        vm.prank(manager);
+        token.setCheckBlockTxLimit(false);
+        vm.prank(manager);
+        token.setCheckTxInterval(false);
+        
+        // Regular user should be limited to 3 transactions per window
+        vm.prank(user);
+        token.transfer(recipient1, 1_000_000 * 10**18);
+        vm.prank(user);
+        token.transfer(recipient2, 1_000_000 * 10**18);
+        vm.prank(user);
+        token.transfer(recipient3, 1_000_000 * 10**18);
+        
+        // Fourth transaction should fail for regular user
+        vm.prank(user);
+        vm.expectRevert("MTXToken: exceeded transactions per window limit");
+        token.transfer(recipient4, 1_000_000 * 10**18);
+        
+        // Whitelisted user should bypass window limit
+        vm.prank(whitelistedUser);
+        token.transfer(recipient1, 1_000_000 * 10**18);
+        vm.prank(whitelistedUser);
+        token.transfer(recipient2, 1_000_000 * 10**18);
+        vm.prank(whitelistedUser);
+        token.transfer(recipient3, 1_000_000 * 10**18);
+        vm.prank(whitelistedUser);
+        token.transfer(recipient4, 1_000_000 * 10**18);
+        
+        // Verify whitelisted user's transactions all succeeded
+        assertEq(token.balanceOf(recipient1), 2_000_000 * 10**18); // 1M from user + 1M from whitelisted
+        assertEq(token.balanceOf(recipient2), 2_000_000 * 10**18); // 1M from user + 1M from whitelisted
+        assertEq(token.balanceOf(recipient3), 2_000_000 * 10**18); // 1M from user + 1M from whitelisted
+        assertEq(token.balanceOf(recipient4), 1_000_000 * 10**18); // 1M from whitelisted only
+        assertEq(token.balanceOf(whitelistedUser), 6_000_000 * 10**18);
+    }
+
+    // ============ WINDOW TRANSFER AMOUNT LIMIT SCENARIO TESTS ============
+
+    function testWindowTransferAmountLimitEnforcement() public {
+        address user = makeAddr("user");
+        address recipient1 = makeAddr("recipient1");
+        address recipient2 = makeAddr("recipient2");
+        address recipient3 = makeAddr("recipient3");
+        
+        // Mint tokens to user for testing
+        vm.prank(treasury);
+        token.mint(user, 200_000_000 * 10**18); // 200 million tokens
+        
+        // Ensure windowTxLimit check is enabled
+        vm.prank(manager);
+        token.setCheckWindowTxLimit(true);
+        assertTrue(token.checkWindowTxLimit());
+        
+        // Disable other checks to focus on window amount limit
+        vm.prank(manager);
+        token.setCheckMaxTransfer(false);
+        vm.prank(manager);
+        token.setCheckMaxWalletBalance(false);
+        vm.prank(manager);
+        token.setCheckBlockTxLimit(false);
+        vm.prank(manager);
+        token.setCheckTxInterval(false);
+        
+        // Current max amount per window is 100 million tokens
+        assertEq(token.maxAmountPerWindow(), 100_000_000 * 10**18);
+        assertEq(token.windowSize(), 15 minutes);
+        
+        // First transfer within window amount limit should succeed
+        vm.prank(user);
+        token.transfer(recipient1, 50_000_000 * 10**18);
+        assertEq(token.balanceOf(recipient1), 50_000_000 * 10**18);
+        
+        // Second transfer within window amount limit should succeed
+        vm.prank(user);
+        token.transfer(recipient2, 30_000_000 * 10**18);
+        assertEq(token.balanceOf(recipient2), 30_000_000 * 10**18);
+        
+        // Third transfer that would exceed window amount limit should fail
+        vm.prank(user);
+        vm.expectRevert("MTXToken: exceeded amount per window limit");
+        token.transfer(recipient3, 30_000_000 * 10**18);
+        
+        // Verify third transfer failed
+        assertEq(token.balanceOf(recipient3), 0);
+        assertEq(token.balanceOf(user), 120_000_000 * 10**18);
+    }
+
+    function testWindowTransferAmountLimitDisabled() public {
+        address user = makeAddr("user");
+        address recipient1 = makeAddr("recipient1");
+        address recipient2 = makeAddr("recipient2");
+        address recipient3 = makeAddr("recipient3");
+        
+        // Mint tokens to user for testing
+        vm.prank(treasury);
+        token.mint(user, 200_000_000 * 10**18);
+        
+        // First, try with window limit enabled - should fail when exceeding amount
+        vm.prank(manager);
+        token.setCheckWindowTxLimit(true);
+        assertTrue(token.checkWindowTxLimit());
+        
+        // Disable other checks
+        vm.prank(manager);
+        token.setCheckMaxTransfer(false);
+        vm.prank(manager);
+        token.setCheckMaxWalletBalance(false);
+        vm.prank(manager);
+        token.setCheckBlockTxLimit(false);
+        vm.prank(manager);
+        token.setCheckTxInterval(false);
+        
+        // First transfer should succeed
+        vm.prank(user);
+        token.transfer(recipient1, 50_000_000 * 10**18);
+        
+        // Second transfer should succeed
+        vm.prank(user);
+        token.transfer(recipient2, 30_000_000 * 10**18);
+        
+        // Third transfer should fail (exceeds 100M window limit)
+        vm.prank(user);
+        vm.expectRevert("MTXToken: exceeded amount per window limit");
+        token.transfer(recipient3, 30_000_000 * 10**18);
+        
+        // Now disable window limit check
+        vm.prank(manager);
+        token.setCheckWindowTxLimit(false);
+        assertFalse(token.checkWindowTxLimit());
+        
+        // Now the same transfer should succeed
+        vm.prank(user);
+        token.transfer(recipient3, 30_000_000 * 10**18);
+        assertEq(token.balanceOf(recipient3), 30_000_000 * 10**18);
+        
+        // Test even larger transfer should succeed
+        vm.prank(user);
+        token.transfer(recipient1, 50_000_000 * 10**18);
+        assertEq(token.balanceOf(recipient1), 100_000_000 * 10**18);
+        assertEq(token.balanceOf(user), 40_000_000 * 10**18);
+    }
+
+    function testWindowTransferAmountLimitWithWhitelistBypass() public {
+        address user = makeAddr("user");
+        address whitelistedUser = makeAddr("whitelistedUser");
+        address recipient1 = makeAddr("recipient1");
+        address recipient2 = makeAddr("recipient2");
+        address recipient3 = makeAddr("recipient3");
+        
+        // Mint tokens to both users
+        vm.prank(treasury);
+        token.mint(user, 200_000_000 * 10**18);
+        vm.prank(treasury);
+        token.mint(whitelistedUser, 200_000_000 * 10**18);
+        
+        // Add whitelistedUser to whitelist
+        vm.prank(manager);
+        token.addToWhitelist(whitelistedUser);
+        assertTrue(token.whitelisted(whitelistedUser));
+        
+        // Ensure windowTxLimit check is enabled
+        vm.prank(manager);
+        token.setCheckWindowTxLimit(true);
+        
+        // Disable other checks
+        vm.prank(manager);
+        token.setCheckMaxTransfer(false);
+        vm.prank(manager);
+        token.setCheckMaxWalletBalance(false);
+        vm.prank(manager);
+        token.setCheckBlockTxLimit(false);
+        vm.prank(manager);
+        token.setCheckTxInterval(false);
+        
+        // Regular user should be limited to 100M per window
+        vm.prank(user);
+        token.transfer(recipient1, 50_000_000 * 10**18);
+        vm.prank(user);
+        token.transfer(recipient2, 30_000_000 * 10**18);
+        
+        // Third transfer should fail for regular user (exceeds 100M window limit)
+        vm.prank(user);
+        vm.expectRevert("MTXToken: exceeded amount per window limit");
+        token.transfer(recipient3, 30_000_000 * 10**18);
+        
+        // Whitelisted user should bypass window amount limit
+        vm.prank(whitelistedUser);
+        token.transfer(recipient1, 50_000_000 * 10**18);
+        vm.prank(whitelistedUser);
+        token.transfer(recipient2, 30_000_000 * 10**18);
+        vm.prank(whitelistedUser);
+        token.transfer(recipient3, 30_000_000 * 10**18);
+        
+        // Verify whitelisted user's transactions all succeeded
+        assertEq(token.balanceOf(recipient1), 100_000_000 * 10**18); // 50M from user + 50M from whitelisted
+        assertEq(token.balanceOf(recipient2), 60_000_000 * 10**18); // 30M from user + 30M from whitelisted
+        assertEq(token.balanceOf(recipient3), 30_000_000 * 10**18); // 30M from whitelisted only
+        assertEq(token.balanceOf(whitelistedUser), 90_000_000 * 10**18);
+    }
+
+    function testWindowTransferAmountLimitTimeReset() public {
+        address user = makeAddr("user");
+        address recipient1 = makeAddr("recipient1");
+        address recipient2 = makeAddr("recipient2");
+        address recipient3 = makeAddr("recipient3");
+        
+        // Mint tokens to user for testing
+        vm.prank(treasury);
+        token.mint(user, 200_000_000 * 10**18); // 200 million tokens
+        
+        // Ensure windowTxLimit check is enabled
+        vm.prank(manager);
+        token.setCheckWindowTxLimit(true);
+        assertTrue(token.checkWindowTxLimit());
+        
+        // Disable other checks to focus on window amount limit
+        vm.prank(manager);
+        token.setCheckMaxTransfer(false);
+        vm.prank(manager);
+        token.setCheckMaxWalletBalance(false);
+        vm.prank(manager);
+        token.setCheckBlockTxLimit(false);
+        vm.prank(manager);
+        token.setCheckTxInterval(false);
+        
+        // Current max amount per window is 100 million tokens
+        assertEq(token.maxAmountPerWindow(), 100_000_000 * 10**18);
+        assertEq(token.windowSize(), 15 minutes);
+        
+        // First transfer within window amount limit should succeed
+        vm.prank(user);
+        token.transfer(recipient1, 80_000_000 * 10**18);
+        assertEq(token.balanceOf(recipient1), 80_000_000 * 10**18);
+        
+        // Second transfer within window amount limit should succeed
+        vm.prank(user);
+        token.transfer(recipient2, 20_000_000 * 10**18);
+        assertEq(token.balanceOf(recipient2), 20_000_000 * 10**18);
+        
+        // Third transfer that would exceed window amount limit should fail
+        vm.prank(user);
+        vm.expectRevert("MTXToken: exceeded amount per window limit");
+        token.transfer(recipient3, 30_000_000 * 10**18);
+        
+        // Verify third transfer failed
+        assertEq(token.balanceOf(recipient3), 0);
+        assertEq(token.balanceOf(user), 100_000_000 * 10**18);
+        
+        // Wait 15 minutes to reset the window
+        vm.warp(block.timestamp + 16 minutes);
+        
+        // Move to next block to ensure window reset
+        vm.roll(block.number + 1);
+        
+        // Now the same transfer should succeed because window has reset
+        vm.prank(user);
+        token.transfer(recipient3, 30_000_000 * 10**18);
+        assertEq(token.balanceOf(recipient3), 30_000_000 * 10**18);
+        assertEq(token.balanceOf(user), 70_000_000 * 10**18);
+        
+        // Test that we can now send another 70M in the new window
+        vm.prank(user);
+        token.transfer(recipient1, 70_000_000 * 10**18);
+        assertEq(token.balanceOf(recipient1), 150_000_000 * 10**18);
+        assertEq(token.balanceOf(user), 0);
     }
 
     // ============ SETTRANSFERLIMITS FUNCTION TESTS ============
