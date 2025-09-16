@@ -18,7 +18,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
     AccessRestriction public immutable accessRestriction;
     
     // Maximum supply of 10 billion tokens
-    uint256 public constant MAX_SUPPLY = 10_000_000_000 * 10**18; // 10 billion tokens
+    uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10**18; // 10 billion tokens
     
     // Transfer limits (based on 10 billion total supply)
     uint256 public maxWalletBalance = 100_000_000 * 10**18; // 1% of 10 billion (100 million tokens)
