@@ -1280,5 +1280,68 @@ contract MTXTokenTest is Test {
         assertEq(token.maxTxsPerBlock(), 0);
     }
 
+    // ============ MAX SUPPLY / MINTING TESTS ============
+
+    function testMintOnlyTreasury() public {
+        address recipient = makeAddr("recipient");
+        address notTreasury = makeAddr("notTreasury");
+
+        // Non-treasury cannot mint
+        vm.prank(notTreasury);
+        vm.expectRevert("MTXToken: caller is not treasury");
+        token.mint(recipient, 1);
+
+        // Treasury can mint
+        vm.prank(treasury);
+        token.mint(recipient, 1_000 * 10**18);
+        assertEq(token.totalSupply(), 1_000 * 10**18);
+        assertEq(token.balanceOf(recipient), 1_000 * 10**18);
+    }
+
+    function testMintCannotExceedMaxSupply() public {
+        address recipient = makeAddr("recipient");
+        uint256 maxSupply = token.MAX_SUPPLY();
+
+        // Mint exactly up to max supply
+        vm.prank(treasury);
+        token.mint(recipient, maxSupply);
+        assertEq(token.totalSupply(), maxSupply);
+        assertEq(token.balanceOf(recipient), maxSupply);
+
+        // Any additional mint should fail
+        vm.prank(treasury);
+        vm.expectRevert("MTXToken: minting would exceed max supply");
+        token.mint(recipient, 1);
+    }
+
+    function testMintAfterBurnBelowCap() public {
+        address holder = makeAddr("holder");
+        uint256 maxSupply = token.MAX_SUPPLY();
+        uint256 twoHundredMillion = 200_000_000 * 10**18;
+
+        // Mint max supply to holder
+        vm.prank(treasury);
+        token.mint(holder, maxSupply);
+        assertEq(token.totalSupply(), maxSupply);
+        assertEq(token.balanceOf(holder), maxSupply);
+
+        // Cannot mint more while at cap
+        vm.prank(treasury);
+        vm.expectRevert("MTXToken: minting would exceed max supply");
+        token.mint(holder, 1);
+
+        // Burn 200M from holder
+        vm.prank(holder);
+        token.burn(twoHundredMillion);
+        assertEq(token.totalSupply(), maxSupply - twoHundredMillion);
+        assertEq(token.balanceOf(holder), maxSupply - twoHundredMillion);
+
+        // Now minting up to the freed amount should succeed
+        vm.prank(treasury);
+        token.mint(holder, twoHundredMillion);
+        assertEq(token.totalSupply(), maxSupply);
+        assertEq(token.balanceOf(holder), maxSupply);
+    }
+
 }
 
