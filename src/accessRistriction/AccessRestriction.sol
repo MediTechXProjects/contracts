@@ -1,63 +1,60 @@
 // SPDX-License-Identifier: UNLICENSED
-
 pragma solidity ^0.8.22;
 
-import { AccessControl } from "@openzeppelin/contracts/access/AccessControl.sol";
-import { Pausable } from "@openzeppelin/contracts/utils/Pausable.sol";
+import { AccessControlUpgradeable } from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 import { IAccessRestriction } from "./IAccessRestriction.sol";
+
 /**
  * @title AccessRestriction
- * @notice Contract that handles access control and pausable functionality
+ * @notice Upgradeable contract that handles access control and pausable functionality
  */
-contract AccessRestriction is AccessControl, Pausable , IAccessRestriction {
+contract AccessRestriction is 
+    AccessControlUpgradeable, 
+    PausableUpgradeable, 
+    UUPSUpgradeable,
+    IAccessRestriction
+{
     // Define roles
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
     bytes32 public constant TREASURY_ROLE = keccak256("TREASURY_ROLE");
+    bytes32 public constant MTX_CONTRACT_ROLE = keccak256("MTX_CONTRACT_ROLE");
 
     
-    constructor(address _admin, address _treasury) {
+    constructor() {
+        _disableInitializers();
+    }
+
+    /// @notice Initializer replaces constructor for upgradeable contracts
+    function initialize(address _admin, address _treasury) public initializer {
+        __AccessControl_init();
+        __Pausable_init();
+        __UUPSUpgradeable_init();
+
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
+        _grantRole(ADMIN_ROLE, _admin);
         _grantRole(TREASURY_ROLE, _treasury);
-
-    }
-    
-    /**
-     * @notice Modifier to restrict access to manager role
-     */
-    modifier onlyManager() {
-        require(hasRole(MANAGER_ROLE, _msgSender()), "AccessRestriction: caller is not a manager");
-        _;
     }
 
-    /**
-     * @notice Modifier to restrict access to admin role
-     */
+    /// @notice Modifier to restrict access to admin role
     modifier onlyAdmin() {
-        require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender()), "AccessRestriction: caller is not an admin");
+        require(hasRole(ADMIN_ROLE, _msgSender()), "AccessRestriction: caller is not an admin");
         _;
     }
 
-    /**
-     * @notice Modifier to restrict access to treasury role
-     */
-    modifier onlyTreasury() {
-        require(hasRole(TREASURY_ROLE, _msgSender()), "AccessRestriction: caller is not treasury");
-        _;
-    }
-    
-    /**
-     * @notice Pause all operations
-     */
-    function pause() external override onlyManager {
+    /// @notice Pause all operations
+    function pause() external override onlyAdmin {
         _pause();
     }
 
-    /**
-     * @notice Unpause all operations
-     */
-    function unpause() external override onlyManager {
+    /// @notice Unpause all operations
+    function unpause() external override onlyAdmin {
         _unpause();
     }
+
+    /// @notice Required by UUPS proxy
+    function _authorizeUpgrade(address newImplementation) internal override onlyAdmin {}
 }

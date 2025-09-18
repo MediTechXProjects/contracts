@@ -75,7 +75,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      * @notice Modifier to restrict access to admin role
      */
     modifier onlyAdmin() {
-        require(accessRestriction.hasRole(0x00, _msgSender()), "MTXToken: caller is not an admin");
+        require(accessRestriction.hasRole(accessRestriction.ADMIN_ROLE(), _msgSender()), "MTXToken: caller is not an admin");
         _;
     }
 

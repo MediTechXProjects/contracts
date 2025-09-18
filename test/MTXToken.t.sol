@@ -23,7 +23,8 @@ contract MTXTokenTest is Test {
 
         // Deploy AccessRestriction first
         vm.startPrank(owner);
-        accessRestriction = new AccessRestriction(owner, treasury);
+        accessRestriction = new AccessRestriction();
+        accessRestriction.initialize(owner, treasury);
         MockLayerZeroEndpointV2 lzEndpoint = new MockLayerZeroEndpointV2();
         
         // Grant manager role (treasury role is granted in constructor)
