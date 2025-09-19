@@ -4,6 +4,7 @@ pragma solidity ^0.8.22;
 import { AccessControlUpgradeable } from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
 import { IAccessRestriction } from "./IAccessRestriction.sol";
 
@@ -11,7 +12,8 @@ import { IAccessRestriction } from "./IAccessRestriction.sol";
  * @title AccessRestriction
  * @notice Upgradeable contract that handles access control and pausable functionality
  */
-contract AccessRestriction is 
+contract AccessRestriction is
+    Initializable,
     AccessControlUpgradeable, 
     PausableUpgradeable, 
     UUPSUpgradeable,
@@ -23,7 +25,7 @@ contract AccessRestriction is
     bytes32 public constant TREASURY_ROLE = keccak256("TREASURY_ROLE");
     bytes32 public constant MTX_CONTRACT_ROLE = keccak256("MTX_CONTRACT_ROLE");
 
-    
+    /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
     }

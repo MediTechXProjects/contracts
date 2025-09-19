@@ -6,6 +6,7 @@ import {MTXToken} from "../src/mTXToken/MTXToken.sol";
 import {AccessRestriction} from "../src/accessRistriction/AccessRestriction.sol";
 import {MockLayerZeroEndpointV2} from "../src/mock/MockLayerZeroEndpointV2.sol";
 import {IMTXToken} from "../src/mTXToken/IMTXToken.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 contract MTXTokenTest is Test {
     MTXToken public token;
@@ -23,8 +24,18 @@ contract MTXTokenTest is Test {
 
         // Deploy AccessRestriction first
         vm.startPrank(owner);
-        accessRestriction = new AccessRestriction();
-        accessRestriction.initialize(owner, treasury);
+
+        AccessRestriction logic= new AccessRestriction();
+        bytes memory data = abi.encodeWithSelector(
+            AccessRestriction.initialize.selector,
+            owner,
+            treasury
+        );
+        address proxy = address(
+            new ERC1967Proxy(address(logic), data)
+        );
+        accessRestriction = AccessRestriction(proxy);
+
         MockLayerZeroEndpointV2 lzEndpoint = new MockLayerZeroEndpointV2();
         
         // Grant manager role (treasury role is granted in constructor)

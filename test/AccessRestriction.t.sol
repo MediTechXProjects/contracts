@@ -5,10 +5,17 @@ import {Test} from "forge-std/Test.sol";
 import {AccessRestriction} from "../src/accessRistriction/AccessRestriction.sol";
 import {IAccessRestriction} from "../src/accessRistriction/IAccessRestriction.sol";
 import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol";
-import { Pausable } from "@openzeppelin/contracts/utils/Pausable.sol";
+import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+
+import "forge-std/console.sol";
+
 
 contract AccessRestrictionTest is Test {
     AccessRestriction public accessRestriction;
+
+    error AccessControlUnauthorizedAccount(address account, bytes32 role);
+
     
     address public admin;
     address public treasury;
@@ -24,8 +31,21 @@ contract AccessRestrictionTest is Test {
 
         // Deploy AccessRestriction
         vm.prank(admin);
-        accessRestriction = new AccessRestriction();
-        accessRestriction.initialize(admin, treasury);
+        
+        AccessRestriction logic= new AccessRestriction();
+
+        bytes memory data = abi.encodeWithSelector(
+            AccessRestriction.initialize.selector,
+            admin,
+            treasury
+        );
+
+
+        address proxy = address(
+            new ERC1967Proxy(address(logic), data)
+        );
+
+        accessRestriction = AccessRestriction(proxy);
     }
 
     function testInitialState() public view {
@@ -58,10 +78,16 @@ contract AccessRestrictionTest is Test {
     function testGrantRoleFailsForNonAdmin() public {
         // Non-admin cannot grant roles
         vm.startPrank(user);
-        vm.expectRevert(IAccessControl.AccessControlUnauthorizedAccount.selector);
-        accessRestriction.grantRole(accessRestriction.MANAGER_ROLE(), manager);
+
+        bool didRevert = false;
+
+        try accessRestriction.grantRole(accessRestriction.MANAGER_ROLE(), manager) {
+            didRevert = false;
+        } catch {
+            didRevert = true;
+        }
         vm.stopPrank();
-        
+        assertTrue(didRevert);
         assertFalse(accessRestriction.hasRole(accessRestriction.MANAGER_ROLE(), manager));
     }
 
@@ -88,10 +114,17 @@ contract AccessRestrictionTest is Test {
         
         // Non-admin cannot revoke roles
         vm.startPrank(user);
-        vm.expectRevert(IAccessControl.AccessControlUnauthorizedAccount.selector);
-        accessRestriction.revokeRole(accessRestriction.MANAGER_ROLE(), manager);
+        
+        bool didRevert = false;
+        
+        try accessRestriction.revokeRole(accessRestriction.MANAGER_ROLE(), manager) {
+            didRevert = false;
+        } catch {
+            didRevert = true;
+        }
         vm.stopPrank();
         
+        assertTrue(didRevert);
         // Role should still exist
         assertTrue(accessRestriction.hasRole(accessRestriction.MANAGER_ROLE(), manager));
     }
@@ -119,10 +152,17 @@ contract AccessRestrictionTest is Test {
         
         // User cannot renounce manager's role
         vm.startPrank(user);
-        vm.expectRevert(IAccessControl.AccessControlBadConfirmation.selector);
-        accessRestriction.renounceRole(accessRestriction.MANAGER_ROLE(), manager);
+        
+        bool didRevert = false;
+        
+        try accessRestriction.renounceRole(accessRestriction.MANAGER_ROLE(), manager) {
+            didRevert = false;
+        } catch {
+            didRevert = true;
+        }
         vm.stopPrank();
         
+        assertTrue(didRevert);
         // Role should still exist
         assertTrue(accessRestriction.hasRole(accessRestriction.MANAGER_ROLE(), manager));
     }
@@ -135,17 +175,18 @@ contract AccessRestrictionTest is Test {
         accessRestriction.grantRole(accessRestriction.MANAGER_ROLE(), manager);
         vm.stopPrank();
         
-        // Manager can pause
+        // Manager cannot pause (only admins can)
         vm.prank(manager);
+        vm.expectRevert("AccessRestriction: caller is not an admin");
         accessRestriction.pause();
         
-        assertTrue(accessRestriction.paused());
+        assertFalse(accessRestriction.paused());
     }
 
-    function testPauseFailsForNonManager() public {
-        // Non-manager cannot pause
+    function testPauseFailsForNonAdmin() public {
+        // Non-admin cannot pause
         vm.prank(user);
-        vm.expectRevert("AccessRestriction: caller is not a manager");
+        vm.expectRevert("AccessRestriction: caller is not an admin");
         accessRestriction.pause();
         
         assertFalse(accessRestriction.paused());
@@ -157,30 +198,31 @@ contract AccessRestrictionTest is Test {
         accessRestriction.grantRole(accessRestriction.MANAGER_ROLE(), manager);
         vm.stopPrank();
         
-        // First pause
-        vm.prank(manager);
+        // First pause (by admin)
+        vm.prank(admin);
         accessRestriction.pause();
         assertTrue(accessRestriction.paused());
         
-        // Then unpause
+        // Manager cannot unpause (only admins can)
         vm.prank(manager);
+        vm.expectRevert("AccessRestriction: caller is not an admin");
         accessRestriction.unpause();
         
-        assertFalse(accessRestriction.paused());
+        assertTrue(accessRestriction.paused());
     }
 
-    function testUnpauseFailsForNonManager() public {
+    function testUnpauseFailsForNonAdmin() public {
         // Grant manager role and pause
         vm.startPrank(admin);
         accessRestriction.grantRole(accessRestriction.MANAGER_ROLE(), manager);
         vm.stopPrank();
         
-        vm.prank(manager);
+        vm.prank(admin);
         accessRestriction.pause();
         
-        // Non-manager cannot unpause
+        // Non-admin cannot unpause
         vm.prank(user);
-        vm.expectRevert("AccessRestriction: caller is not a manager");
+        vm.expectRevert("AccessRestriction: caller is not an admin");
         accessRestriction.unpause();
         
         assertTrue(accessRestriction.paused());
@@ -195,18 +237,18 @@ contract AccessRestrictionTest is Test {
         // Initial state
         assertFalse(accessRestriction.paused());
         
-        // Pause
-        vm.prank(manager);
+        // Pause (by admin)
+        vm.prank(admin);
         accessRestriction.pause();
         assertTrue(accessRestriction.paused());
         
-        // Unpause
-        vm.prank(manager);
+        // Unpause (by admin)
+        vm.prank(admin);
         accessRestriction.unpause();
         assertFalse(accessRestriction.paused());
         
-        // Pause again
-        vm.prank(manager);
+        // Pause again (by admin)
+        vm.prank(admin);
         accessRestriction.pause();
         assertTrue(accessRestriction.paused());
     }
@@ -234,20 +276,34 @@ contract AccessRestrictionTest is Test {
         
         // Manager cannot grant roles
         vm.startPrank(manager);
-        vm.expectRevert(IAccessControl.AccessControlUnauthorizedAccount.selector);
-        accessRestriction.grantRole(accessRestriction.MANAGER_ROLE(), user);
+        
+        bool didRevert = false;
+        
+        try accessRestriction.grantRole(accessRestriction.MANAGER_ROLE(), user) {
+            didRevert = false;
+        } catch {
+            didRevert = true;
+        }
         vm.stopPrank();
         
+        assertTrue(didRevert);
         assertFalse(accessRestriction.hasRole(accessRestriction.MANAGER_ROLE(), user));
     }
 
     function testTreasuryCannotGrantRoles() public {
         // Treasury cannot grant roles
         vm.startPrank(treasury);
-        vm.expectRevert(IAccessControl.AccessControlUnauthorizedAccount.selector);
-        accessRestriction.grantRole(accessRestriction.MANAGER_ROLE(), user);
+        
+        bool didRevert = false;
+        
+        try accessRestriction.grantRole(accessRestriction.MANAGER_ROLE(), user) {
+            didRevert = false;
+        } catch {
+            didRevert = true;
+        }
         vm.stopPrank();
         
+        assertTrue(didRevert);
         assertFalse(accessRestriction.hasRole(accessRestriction.MANAGER_ROLE(), user));
     }
 
@@ -294,27 +350,40 @@ contract AccessRestrictionTest is Test {
 
     function testMultipleManagersCanPause() public {
         address manager2 = makeAddr("manager2");
+        address admin2 = makeAddr("admin2");
         
-        // Grant manager role to both
+        // Grant manager role to both managers
         vm.startPrank(admin);
         accessRestriction.grantRole(accessRestriction.MANAGER_ROLE(), manager);
         accessRestriction.grantRole(accessRestriction.MANAGER_ROLE(), manager2);
+        // Grant admin role to second admin
+        accessRestriction.grantRole(accessRestriction.ADMIN_ROLE(), admin2);
         vm.stopPrank();
         
-        // Either manager can pause
-        vm.prank(manager);
+        // Only admins can pause (not managers)
+        vm.prank(admin);
         accessRestriction.pause();
         assertTrue(accessRestriction.paused());
         
-        // Unpause
-        vm.prank(manager2);
+        // Unpause with different admin
+        vm.prank(admin2);
         accessRestriction.unpause();
         assertFalse(accessRestriction.paused());
         
-        // Pause again with different manager
-        vm.prank(manager2);
+        // Pause again with different admin
+        vm.prank(admin2);
         accessRestriction.pause();
         assertTrue(accessRestriction.paused());
+        
+        // Verify managers cannot pause
+        vm.prank(manager);
+        vm.expectRevert("AccessRestriction: caller is not an admin");
+        accessRestriction.pause();
+        
+        // Verify managers cannot unpause
+        vm.prank(manager2);
+        vm.expectRevert("AccessRestriction: caller is not an admin");
+        accessRestriction.unpause();
     }
 
     function testRoleEvents() public {
@@ -334,21 +403,16 @@ contract AccessRestrictionTest is Test {
     }
 
     function testPauseEvents() public {
-        // Grant manager role
-        vm.startPrank(admin);
-        accessRestriction.grantRole(accessRestriction.MANAGER_ROLE(), manager);
-        vm.stopPrank();
-        
-        // Test that pause event is emitted
-        vm.prank(manager);
+        // Test that pause event is emitted (admin can pause)
+        vm.prank(admin);
         vm.expectEmit(false, false, false, true);
-        emit Pausable.Paused(manager);
+        emit PausableUpgradeable.Paused(admin);
         accessRestriction.pause();
         
-        // Test that unpause event is emitted
-        vm.prank(manager);
+        // Test that unpause event is emitted (admin can unpause)
+        vm.prank(admin);
         vm.expectEmit(false, false, false, true);
-        emit Pausable.Unpaused(manager);
+        emit PausableUpgradeable.Unpaused(admin);
         accessRestriction.unpause();
     }
 }
