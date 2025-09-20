@@ -172,6 +172,148 @@ contract MTXTokenTest is Test {
         token.removeFromWhitelist(user);
     }
 
+    // ============ SETACCESSRESTRICTION FUNCTION TESTS ============
+
+    function testSetAccessRestriction() public {
+        // Deploy a new AccessRestriction contract
+        address newAdmin = makeAddr("newAdmin");
+        address newTreasury = makeAddr("newTreasury");
+        
+        vm.startPrank(newAdmin);
+        AccessRestriction newAccessRestriction = new AccessRestriction();
+        bytes memory data = abi.encodeWithSelector(
+            AccessRestriction.initialize.selector,
+            newAdmin,
+            newTreasury
+        );
+        address newAccessRestrictionProxy = address(
+            new ERC1967Proxy(address(newAccessRestriction), data)
+        );
+        vm.stopPrank();
+        
+        // Test that manager can set new access restriction
+        vm.prank(manager);
+        token.setAccessRestriction(newAccessRestrictionProxy);
+        
+        // Verify the access restriction was updated
+        assertEq(address(token.accessRestriction()), newAccessRestrictionProxy);
+    }
+
+    function testSetAccessRestrictionFailsForNonManager() public {
+        address nonManager = makeAddr("nonManager");
+        address newAccessRestriction = makeAddr("newAccessRestriction");
+        
+        // Test that non-manager cannot set access restriction
+        vm.prank(nonManager);
+        vm.expectRevert("MTXToken: caller is not a manager");
+        token.setAccessRestriction(newAccessRestriction);
+        
+        // Verify the access restriction was not changed
+        assertEq(address(token.accessRestriction()), address(accessRestriction));
+    }
+
+    function testSetAccessRestrictionWithZeroAddress() public {
+        // Test that setting zero address is allowed (no validation in the function)
+        vm.prank(manager);
+        token.setAccessRestriction(address(0));
+        
+        // Verify the access restriction was updated to zero address
+        assertEq(address(token.accessRestriction()), address(0));
+    }
+
+    function testSetAccessRestrictionWithSameAddress() public {
+        // Test setting the same access restriction address
+        vm.prank(manager);
+        token.setAccessRestriction(address(accessRestriction));
+        
+        // Verify the access restriction remains the same
+        assertEq(address(token.accessRestriction()), address(accessRestriction));
+    }
+
+    function testSetAccessRestrictionWithInvalidContract() public {
+        // Test setting an address that is not a valid AccessRestriction contract
+        address invalidContract = makeAddr("invalidContract");
+        
+        vm.prank(manager);
+        token.setAccessRestriction(invalidContract);
+        
+        // Verify the access restriction was updated (no validation in the function)
+        assertEq(address(token.accessRestriction()), invalidContract);
+    }
+
+    function testSetAccessRestrictionAffectsRoleChecks() public {
+        // Deploy a new AccessRestriction with different roles
+        address newAdmin = makeAddr("newAdmin");
+        address newTreasury = makeAddr("newTreasury");
+        address newManager = makeAddr("newManager");
+        
+        vm.startPrank(newAdmin);
+        AccessRestriction newAccessRestriction = new AccessRestriction();
+        bytes memory data = abi.encodeWithSelector(
+            AccessRestriction.initialize.selector,
+            newAdmin,
+            newTreasury
+        );
+        address newAccessRestrictionProxy = address(
+            new ERC1967Proxy(address(newAccessRestriction), data)
+        );
+        AccessRestriction newAccessRestrictionInstance = AccessRestriction(newAccessRestrictionProxy);
+        
+        // Grant manager role to new manager in the new access restriction
+        newAccessRestrictionInstance.grantRole(newAccessRestrictionInstance.MANAGER_ROLE(), newManager);
+        vm.stopPrank();
+        
+        // Set the new access restriction
+        vm.prank(manager);
+        token.setAccessRestriction(newAccessRestrictionProxy);
+        
+        // Test that the old manager can no longer call manager functions
+        vm.prank(manager);
+        vm.expectRevert("MTXToken: caller is not a manager");
+        token.addToBlacklist(makeAddr("user"));
+        
+        // Test that the new manager can call manager functions
+        vm.prank(newManager);
+        token.addToBlacklist(makeAddr("user"));
+        assertTrue(token.blacklisted(makeAddr("user")));
+    }
+
+    function testSetAccessRestrictionAffectsPauseCheck() public {
+        // Deploy a new AccessRestriction and pause it
+        address newAdmin = makeAddr("newAdmin");
+        address newTreasury = makeAddr("newTreasury");
+        
+        vm.startPrank(newAdmin);
+        AccessRestriction newAccessRestriction = new AccessRestriction();
+        bytes memory data = abi.encodeWithSelector(
+            AccessRestriction.initialize.selector,
+            newAdmin,
+            newTreasury
+        );
+        address newAccessRestrictionProxy = address(
+            new ERC1967Proxy(address(newAccessRestriction), data)
+        );
+        AccessRestriction newAccessRestrictionInstance = AccessRestriction(newAccessRestrictionProxy);
+        
+        // Pause the new access restriction
+        newAccessRestrictionInstance.pause();
+        vm.stopPrank();
+        
+        // Set the new access restriction
+        vm.prank(manager);
+        token.setAccessRestriction(newAccessRestrictionProxy);
+        
+        // Mint some tokens first using the new treasury
+        vm.prank(newTreasury);
+        vm.expectRevert("Pausable: paused");
+        token.mint(owner, 1000 * 10**18);
+        
+        // Test that transfers are blocked when the new access restriction is paused
+        vm.prank(owner);
+        vm.expectRevert("Pausable: paused");
+        token.transfer(makeAddr("recipient"), 100 * 10**18);
+    }
+
     // ============ CHECKTXINTERVAL FUNCTION TESTS ============
 
     function testSetCheckTxInterval() public {

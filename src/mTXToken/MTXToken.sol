@@ -15,7 +15,7 @@ import "forge-std/console.sol";
 /// @notice OFT is an ERC-20 token that extends the OFTCore contract.
 contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
     // Access restriction contract
-    AccessRestriction public immutable accessRestriction;
+    AccessRestriction public accessRestriction;
     
     // Maximum supply of 10 billion tokens
     uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10**18; // 10 billion tokens
@@ -104,6 +104,17 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
         require(totalSupply() + amount <= MAX_SUPPLY, "MTXToken: minting would exceed max supply");
         _mint(to, amount);
     }
+
+    
+    /**
+     * @notice Update the access restriction contract address
+     * @param _accessRestriction The new access restriction contract address
+     * @dev Only callable by manager role
+     */
+    function setAccessRestriction(address _accessRestriction) external onlyManager {
+        accessRestriction = AccessRestriction(_accessRestriction);
+    }
+
 
     /**
      * @notice Add an address to the blacklist
