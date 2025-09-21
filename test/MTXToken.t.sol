@@ -1450,6 +1450,7 @@ contract MTXTokenTest is Test {
         token.mint(recipient, 1_000 * 10**18);
         assertEq(token.totalSupply(), 1_000 * 10**18);
         assertEq(token.balanceOf(recipient), 1_000 * 10**18);
+        assertEq(token.totalMinted(), 1_000 * 10**18);
     }
 
     function testMintCannotExceedMaxSupply() public {
@@ -1461,6 +1462,7 @@ contract MTXTokenTest is Test {
         token.mint(recipient, maxSupply);
         assertEq(token.totalSupply(), maxSupply);
         assertEq(token.balanceOf(recipient), maxSupply);
+        assertEq(token.totalMinted(), maxSupply);
 
         // Any additional mint should fail
         vm.prank(treasury);
@@ -1468,7 +1470,7 @@ contract MTXTokenTest is Test {
         token.mint(recipient, 1);
     }
 
-    function testMintAfterBurnBelowCap() public {
+    function testMintAfterBurnCannotExceedMaxSupply() public {
         address holder = makeAddr("holder");
         uint256 maxSupply = token.MAX_SUPPLY();
         uint256 twoHundredMillion = 200_000_000 * 10**18;
@@ -1478,6 +1480,7 @@ contract MTXTokenTest is Test {
         token.mint(holder, maxSupply);
         assertEq(token.totalSupply(), maxSupply);
         assertEq(token.balanceOf(holder), maxSupply);
+        assertEq(token.totalMinted(), maxSupply);
 
         // Cannot mint more while at cap
         vm.prank(treasury);
@@ -1489,12 +1492,93 @@ contract MTXTokenTest is Test {
         token.burn(twoHundredMillion);
         assertEq(token.totalSupply(), maxSupply - twoHundredMillion);
         assertEq(token.balanceOf(holder), maxSupply - twoHundredMillion);
+        // totalMinted should remain unchanged after burning
+        assertEq(token.totalMinted(), maxSupply);
 
-        // Now minting up to the freed amount should succeed
+        // Now minting should still fail because totalMinted is still at max supply
         vm.prank(treasury);
+        vm.expectRevert("MTXToken: minting would exceed max supply");
         token.mint(holder, twoHundredMillion);
+    }
+
+    function testTotalMintedTracking() public {
+        address holder1 = makeAddr("holder1");
+        address holder2 = makeAddr("holder2");
+        uint256 mintAmount1 = 100_000_000 * 10**18; // 100M tokens
+        uint256 mintAmount2 = 200_000_000 * 10**18; // 200M tokens
+        uint256 burnAmount = 50_000_000 * 10**18;   // 50M tokens
+
+        // Initial state
+        assertEq(token.totalMinted(), 0);
+        assertEq(token.totalSupply(), 0);
+
+        // First mint
+        vm.prank(treasury);
+        token.mint(holder1, mintAmount1);
+        assertEq(token.totalMinted(), mintAmount1);
+        assertEq(token.totalSupply(), mintAmount1);
+        assertEq(token.balanceOf(holder1), mintAmount1);
+
+        // Second mint
+        vm.prank(treasury);
+        token.mint(holder2, mintAmount2);
+        assertEq(token.totalMinted(), mintAmount1 + mintAmount2);
+        assertEq(token.totalSupply(), mintAmount1 + mintAmount2);
+        assertEq(token.balanceOf(holder2), mintAmount2);
+
+        // Burn some tokens
+        vm.prank(holder1);
+        token.burn(burnAmount);
+        assertEq(token.totalMinted(), mintAmount1 + mintAmount2); // totalMinted unchanged
+        assertEq(token.totalSupply(), mintAmount1 + mintAmount2 - burnAmount); // totalSupply decreased
+        assertEq(token.balanceOf(holder1), mintAmount1 - burnAmount);
+    }
+
+    function testMaxSupplyEnforcementWithMultipleMints() public {
+        address holder1 = makeAddr("holder1");
+        address holder2 = makeAddr("holder2");
+        uint256 maxSupply = token.MAX_SUPPLY();
+        uint256 halfSupply = maxSupply / 2;
+
+        // Mint half supply to first holder
+        vm.prank(treasury);
+        token.mint(holder1, halfSupply);
+        assertEq(token.totalMinted(), halfSupply);
+        assertEq(token.totalSupply(), halfSupply);
+
+        // Mint half supply to second holder
+        vm.prank(treasury);
+        token.mint(holder2, halfSupply);
+        assertEq(token.totalMinted(), maxSupply);
         assertEq(token.totalSupply(), maxSupply);
-        assertEq(token.balanceOf(holder), maxSupply);
+
+        // Any additional mint should fail
+        vm.prank(treasury);
+        vm.expectRevert("MTXToken: minting would exceed max supply");
+        token.mint(holder1, 1);
+    }
+
+    function testMaxSupplyEnforcementWithBurning() public {
+        address holder = makeAddr("holder");
+        uint256 maxSupply = token.MAX_SUPPLY();
+        uint256 burnAmount = 100_000_000 * 10**18; // 100M tokens
+
+        // Mint max supply
+        vm.prank(treasury);
+        token.mint(holder, maxSupply);
+        assertEq(token.totalMinted(), maxSupply);
+        assertEq(token.totalSupply(), maxSupply);
+
+        // Burn some tokens
+        vm.prank(holder);
+        token.burn(burnAmount);
+        assertEq(token.totalMinted(), maxSupply); // totalMinted unchanged
+        assertEq(token.totalSupply(), maxSupply - burnAmount); // totalSupply decreased
+
+        // Cannot mint more even after burning because totalMinted is still at max
+        vm.prank(treasury);
+        vm.expectRevert("MTXToken: minting would exceed max supply");
+        token.mint(holder, burnAmount);
     }
 
 }

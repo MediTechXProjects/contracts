@@ -20,6 +20,9 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
     // Maximum supply of 10 billion tokens
     uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10**18; // 10 billion tokens
     
+    // Track total minted tokens (doesn't decrease when burned)
+    uint256 public totalMinted;
+    
     // Transfer limits (based on 10 billion total supply)
     uint256 public maxWalletBalance = 100_000_000 * 10**18; // 1% of 10 billion (100 million tokens)
     uint256 public maxTransferAmount = 5_000_000 * 10**18;  // 0.05% of 10 billion (5 million tokens)
@@ -101,7 +104,8 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      * @param amount The amount of tokens to mint
      */
     function mint(address to, uint256 amount) external onlyTreasury {
-        require(totalSupply() + amount <= MAX_SUPPLY, "MTXToken: minting would exceed max supply");
+        require(totalMinted + amount <= MAX_SUPPLY, "MTXToken: minting would exceed max supply");
+        totalMinted += amount;
         _mint(to, amount);
     }
 

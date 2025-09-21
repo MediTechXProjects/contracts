@@ -24,6 +24,12 @@ remappings = [
     'solidity-bytes-utils/=lib/solidity-bytes-utils/',
 ]
 
+[profile.coverage]
+via_ir = true
+optimizer = true
+optimizer_runs = 1
+exclude = ["script/**", "src/mock/**"]
+
 [rpc_endpoints]
 mainnet = "${RPC_URL}"
 sepolia = "${RPC_URL_TEST}"
