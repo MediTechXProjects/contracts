@@ -7,7 +7,7 @@ import { AccessRestriction } from "../../../src/accessRistriction/AccessRestrict
 contract CheckRole is Script {
     function run() external {
         // Get addresses from environment variables
-        address accessRestrictionAddress = 0xB7831dF857e4d7072EeA3A3EcC72b4F2610297e4;
+        address accessRestrictionAddress = 0xe6C7a461766914f114Ecb91D77B851278A51452C;
         address userAddress = 0xe7A38d4d4D1ebc4e441f76a70AD7CE7a5D78531C;
 
         // Create interface instance

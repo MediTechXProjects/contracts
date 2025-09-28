@@ -9,7 +9,7 @@ contract DeployMTXToken is Script {
         // Replace these env vars with your own values
         address lzEndpoint = vm.envAddress("ENDPOINT_AMOY_ADDRESS");
         address owner = vm.envAddress("OWNER_ADDRESS");
-        address accessRestriction = 0xB7831dF857e4d7072EeA3A3EcC72b4F2610297e4;
+        address accessRestriction = 0xe6C7a461766914f114Ecb91D77B851278A51452C;
 
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
         MTXToken mtxToken = new MTXToken(lzEndpoint, owner, accessRestriction);
