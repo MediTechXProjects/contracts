@@ -17,8 +17,8 @@ contract SetReceiveConfig is Script {
     function _createRequiredDVNs() private pure returns (address[] memory) {
         address[] memory dvns = new address[](2);
         // DVN addresses must be sorted in ascending order
-        dvns[0] = 0xdf04ABb599c7B37dD5FfC0f8E94f6898120874eF; // Smaller address first
-        dvns[1] = 0xe1a12515F9AB2764b887bF60B923Ca494EBbB2d6; // Larger address second
+        dvns[0] = 0x3Ed2211f49ce343D70CB8dEd927cA6C4a6198101; // Smaller address first
+        dvns[1] = 0x4f9D2bD7942c3e76CFC7323A56b95B4a6A52FdFd; // Larger address second
         
         return dvns;
     }

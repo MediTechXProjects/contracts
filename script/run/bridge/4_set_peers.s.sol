@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 import "forge-std/Script.sol";
-import { MTXToken } from "./../src/mTXToken/MTXToken.sol";
+import { MTXToken } from "./../../../src/mTXToken/MTXToken.sol";
 
 /// @title LayerZero OApp Peer Configuration Script
 /// @notice Sets up peer connections between OApp deployments on different chains

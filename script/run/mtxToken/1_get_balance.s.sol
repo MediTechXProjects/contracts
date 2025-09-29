@@ -7,14 +7,14 @@ import { MTXToken } from "./../../../src/mTXToken/MTXToken.sol";
 contract GetUserBalance is Script {
     function run() external {
 
-        address tokenAddress = 0xc899BE3A96010435e55Aea5f53DB35a3AE8eBc9e;
+        address tokenAddress = 0x0435c5C579E9a808383563Ae50D1Db5D16c312B5;
         address userAddress = 0xe7A38d4d4D1ebc4e441f76a70AD7CE7a5D78531C;
 
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
 
         MTXToken oapp = MTXToken(tokenAddress);
 
-        uint256 supply = oapp.MAX_SUPPLY();
+        uint256 supply = oapp.totalSupply();
         console.log("Total Supply:", supply);
         
         uint256 balance = oapp.balanceOf(userAddress);

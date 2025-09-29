@@ -2,7 +2,7 @@
 pragma solidity ^0.8.22;
 
 import "forge-std/Script.sol";
-import { MTXToken } from "./../src/mTXToken/MTXToken.sol";
+import { MTXToken } from "./../../../../src/mTXToken/MTXToken.sol";
 import { SendParam } from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 import { OptionsBuilder } from "@layerzerolabs/oapp-evm/contracts/oapp/libs/OptionsBuilder.sol";
 import { MessagingFee } from "@layerzerolabs/oapp-evm/contracts/oapp/OApp.sol";
@@ -17,8 +17,8 @@ contract SendOFT is Script {
     function run() external {
         // Load environment variables
         address oappAddress = vm.envAddress("OAPP_ADDRESS");
-        address toAddress = vm.envAddress("TO_ADDRESS");
-        uint256 tokensToSend = vm.envUint("TOKENS_TO_SEND");
+        address toAddress = 0xe7A38d4d4D1ebc4e441f76a70AD7CE7a5D78531C;
+        uint256 tokensToSend = 50_000_000 * 10**18;
         uint32 dstEid = uint32(vm.envUint("DST_EID"));
         uint256 privateKey = vm.envUint("PRIVATE_KEY");
 
@@ -27,7 +27,8 @@ contract SendOFT is Script {
         MTXToken oapp = MTXToken(oappAddress);
 
         // Build send parameters
-        bytes memory extraOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(65000, 0);
+        bytes memory extraOptions = OptionsBuilder.newOptions().addExecutorLzReceiveOption(100000, 0);
+        
         SendParam memory sendParam = SendParam({
             dstEid: dstEid,
             to: addressToBytes32(toAddress),

@@ -3,7 +3,7 @@ pragma solidity ^0.8.22;
 
 import "forge-std/Script.sol";
 import { ILayerZeroEndpointV2 } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
-import { MTXToken } from "./../src/mTXToken/MTXToken.sol";
+import { MTXToken } from "./../../../../src/mTXToken/MTXToken.sol";
 
 contract CheckSupported is Script {
     function run() external {
