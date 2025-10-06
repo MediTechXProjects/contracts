@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.22;
+pragma solidity ^0.8.20;
 
 import { ERC20Burnable } from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import { ERC20Permit } from "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
@@ -10,7 +10,6 @@ import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 import { IMTXToken } from "./IMTXToken.sol";
 import { AccessRestriction } from "../accessRistriction/AccessRestriction.sol";
-import "forge-std/console.sol";
 
 /// @notice OFT is an ERC-20 token that extends the OFTCore contract.
 contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
@@ -266,7 +265,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
 
         if (checkTxInterval) {
             require(currentTime >= rl.lastTxTime + minTxInterval,
-                "MTXToken: must wait 1 minute between transactions");
+                "MTXToken: too many transactions, please wait");
         }
         
         if (checkBlockTxLimit) {

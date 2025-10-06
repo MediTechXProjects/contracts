@@ -368,7 +368,7 @@ contract MTXTokenTest is Test {
         assertEq(token.balanceOf(user), 900 * 10**18);        
         // Second transaction should fail due to interval time restriction
         vm.prank(user);
-        vm.expectRevert("MTXToken: must wait 1 minute between transactions");
+        vm.expectRevert("MTXToken: too many transactions, please wait");
         token.transfer(recipient2, 100 * 10**18);
         
         // Verify second transaction failed (recipient2 should have 0 balance)
@@ -451,7 +451,7 @@ contract MTXTokenTest is Test {
         
         // Second transaction should fail (only 30 seconds needed, but we haven't waited)
         vm.prank(user);
-        vm.expectRevert("MTXToken: must wait 1 minute between transactions");
+        vm.expectRevert("MTXToken: too many transactions, please wait");
         token.transfer(recipient2, 100 * 10**18);
         
         // Wait 30 seconds
