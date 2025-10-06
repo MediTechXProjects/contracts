@@ -14,7 +14,7 @@ interface IMTXToken is IERC20 {
     event Whitelisted(address indexed account, bool isWhitelisted);
     event RestrictionsDisabled();
     event TransferLimitsUpdated(uint256 maxWalletBalance, uint256 maxTransferAmount);
-    event RateLimitingParamsUpdated(uint256 maxTxsPerWindow, uint256 windowSize, uint256 minTxInterval, uint256 maxTxsPerBlock);
+    event RateLimitingParamsUpdated(uint32 maxTxsPerWindow, uint64 windowSize, uint64 minTxInterval, uint32 maxTxsPerBlock, uint256 maxAmountPerWindow);
     
     function blacklisted(address account) external view returns (bool);
     function whitelisted(address account) external view returns (bool);
@@ -24,11 +24,10 @@ interface IMTXToken is IERC20 {
     function addToWhitelist(address account) external;
     function removeFromWhitelist(address account) external;
     
-    function restrictionsEnabled() external view returns (bool);
     function disableRestrictions() external;
     
     function mint(address to, uint256 amount) external;
     
     function setTransferLimits(uint256 _maxWalletBalance, uint256 _maxTransferAmount) external;
-    function setRateLimitingParams(uint256 _maxTxsPerWindow, uint256 _windowSize, uint256 _minTxInterval, uint256 _maxTxsPerBlock) external;
+    function setRateLimitingParams(uint32 _maxTxsPerWindow, uint64 _windowSize, uint64 _minTxInterval, uint32 _maxTxsPerBlock, uint256 _maxAmountPerWindow) external;
 }

@@ -434,7 +434,7 @@ contract MTXTokenTest is Test {
         
         // Set interval to 30 seconds
         vm.prank(manager);
-        token.setRateLimitingParams(3, 15 minutes, 30, 2);
+        token.setRateLimitingParams(3, 15 minutes, 30, 2, 100_000_000 * 10**18);
         assertEq(token.minTxInterval(), 30);
         
         // Disable other checks to focus on transaction interval
@@ -1401,15 +1401,15 @@ contract MTXTokenTest is Test {
     // ============ SETRATELIMITINGPARAMS FUNCTION TESTS ============
 
     function testSetRateLimitingParams() public {
-        uint256 newMaxTxsPerWindow = 5;
-        uint256 newWindowSize = 30 minutes;
-        uint256 newMinTxInterval = 2 minutes;
-        uint256 newMaxTxsPerBlock = 3;
+        uint32 newMaxTxsPerWindow = 5;
+        uint64 newWindowSize = 30 minutes;
+        uint64 newMinTxInterval = 2 minutes;
+        uint32 newMaxTxsPerBlock = 3;
         
         vm.prank(manager);
         vm.expectEmit(false, false, false, true);
-        emit IMTXToken.RateLimitingParamsUpdated(newMaxTxsPerWindow, newWindowSize, newMinTxInterval, newMaxTxsPerBlock);
-        token.setRateLimitingParams(newMaxTxsPerWindow, newWindowSize, newMinTxInterval, newMaxTxsPerBlock);
+        emit IMTXToken.RateLimitingParamsUpdated(newMaxTxsPerWindow, newWindowSize, newMinTxInterval, newMaxTxsPerBlock, 100_000_000 * 10**18);
+        token.setRateLimitingParams(newMaxTxsPerWindow, newWindowSize, newMinTxInterval, newMaxTxsPerBlock, 100_000_000 * 10**18);
         
         assertEq(token.maxTxsPerWindow(), newMaxTxsPerWindow);
         assertEq(token.windowSize(), newWindowSize);
@@ -1420,13 +1420,13 @@ contract MTXTokenTest is Test {
         
         vm.prank(nonManager);
         vm.expectRevert("MTXToken: caller is not a manager");
-        token.setRateLimitingParams(1, 1, 1, 1);
+        token.setRateLimitingParams(1, 1, 1, 1, 100_000_000 * 10**18);
     }
 
 
     function testSetRateLimitingParamsWithZeroValues() public {
         vm.prank(manager);
-        token.setRateLimitingParams(0, 0, 0, 0);
+        token.setRateLimitingParams(0, 0, 0, 0, 100_000_000 * 10**18);
         
         assertEq(token.maxTxsPerWindow(), 0);
         assertEq(token.windowSize(), 0);

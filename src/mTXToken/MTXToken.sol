@@ -14,18 +14,19 @@ import "forge-std/console.sol";
 
 /// @notice OFT is an ERC-20 token that extends the OFTCore contract.
 contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
+
+    // Maximum supply of 1 billion tokens
+    uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10**18;
+
     // Access restriction contract
     AccessRestriction public accessRestriction;
-    
-    // Maximum supply of 10 billion tokens
-    uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10**18; // 10 billion tokens
     
     // Track total minted tokens (doesn't decrease when burned)
     uint256 public totalMinted;
     
-    // Transfer limits (based on 10 billion total supply)
-    uint256 public maxWalletBalance = 100_000_000 * 10**18; // 1% of 10 billion (100 million tokens)
-    uint256 public maxTransferAmount = 5_000_000 * 10**18;  // 0.05% of 10 billion (5 million tokens)
+    // Transfer limits (based on 1 billion total supply)
+    uint256 public maxWalletBalance = 100_000_000 * 10**18; // 10% of 1 billion (100 million tokens)
+    uint256 public maxTransferAmount = 5_000_000 * 10**18;  // 0.5% of 1 billion (5 million tokens)
 
 
     // Blacklist mapping
@@ -41,27 +42,25 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
     bool public checkWindowTxLimit = true;
     bool public checkBlackList = true;
     bool public checkMaxTransfer = true;
-    bool public checkMaxWalletBalance = true;
-    
-    // Control flag for all checks (can only be disabled once by admin)
-    bool public override restrictionsEnabled = true;
+    bool public checkMaxWalletBalance = true;    
+    bool public restrictionsEnabled = true;
     
     
     // Rate limiting parameters
-    uint256 public maxTxsPerWindow = 3; // Max transactions per 15 minutes
-    uint256 public windowSize = 15 minutes; // 15 minute window
-    uint256 public minTxInterval = 1 minutes; // Minimum time between transactions
-    uint256 public maxTxsPerBlock = 2; // Max transactions per block
-    uint256 public maxAmountPerWindow = 100_000_000 * 10**18; // Max transferable amount per window
+    uint32  public maxTxsPerWindow = 3;
+    uint32  public maxTxsPerBlock = 2;
+    uint64  public windowSize = 15 minutes;
+    uint64  public minTxInterval = 1 minutes;
+    uint256 public maxAmountPerWindow = 100_000_000 * 10**18;
     
     // Rate limiting state
     struct RateLimit {
-        uint256 windowStart;
-        uint256 txCount;
         uint256 windowAmount;
-        uint256 lastTxTime;
-        uint256 lastTxBlock;
-        uint256 blockTxCount;
+        uint64 windowStart;
+        uint64 lastTxTime;
+        uint64 lastTxBlock;
+        uint32 blockTxCount;
+        uint32 txCount;
     }
     
     mapping(address => RateLimit) private rateLimits;
@@ -229,10 +228,11 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      * @param _maxTxsPerBlock Maximum transactions per block
      */
     function setRateLimitingParams(
-        uint256 _maxTxsPerWindow,
-        uint256 _windowSize,
-        uint256 _minTxInterval,
-        uint256 _maxTxsPerBlock
+        uint32 _maxTxsPerWindow,
+        uint64 _windowSize,
+        uint64 _minTxInterval,
+        uint32 _maxTxsPerBlock,
+        uint256 _maxAmountPerWindow
     ) external onlyManager {
         
         maxTxsPerWindow = _maxTxsPerWindow;
@@ -240,18 +240,8 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
         minTxInterval = _minTxInterval;
         maxTxsPerBlock = _maxTxsPerBlock;
         
-        emit RateLimitingParamsUpdated(_maxTxsPerWindow, _windowSize, _minTxInterval, _maxTxsPerBlock);
+        emit RateLimitingParamsUpdated(_maxTxsPerWindow, _windowSize, _minTxInterval, _maxTxsPerBlock, _maxAmountPerWindow);
     }
-
-    /**
-     * @notice Set maximum transferable amount allowed per window
-     * @param _maxAmountPerWindow Maximum amount per window in token units
-     */
-    function setMaxAmountPerWindow(uint256 _maxAmountPerWindow) external onlyManager {
-        require(_maxAmountPerWindow > 0, "MTXToken: max amount per window must be greater than 0");
-        maxAmountPerWindow = _maxAmountPerWindow;
-    }
-
 
     /**
      * @notice Permanently disable all restrictions (one-time only, admin only)
@@ -271,8 +261,8 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
         
         RateLimit storage rl = rateLimits[from];
         
-        uint256 currentTime = block.timestamp;
-        uint256 currentBlock = block.number;
+        uint64 currentTime = uint64(block.timestamp);
+        uint64 currentBlock = uint64(block.number);
 
         if (checkTxInterval) {
             require(currentTime >= rl.lastTxTime + minTxInterval,
