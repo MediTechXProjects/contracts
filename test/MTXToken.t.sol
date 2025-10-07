@@ -8,6 +8,17 @@ import {MockLayerZeroEndpointV2} from "../src/mock/MockLayerZeroEndpointV2.sol";
 import {IMTXToken} from "../src/mTXToken/IMTXToken.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
+// Harness to expose internal _mint (which triggers _update with from == address(0))
+contract MTXTokenHarness is MTXToken {
+    constructor(address _lzEndpoint, address _owner, address _accessRestriction)
+        MTXToken(_lzEndpoint, _owner, _accessRestriction)
+    {}
+
+    function harnessMint(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
+}
+
 contract MTXTokenTest is Test {
     MTXToken public token;
     AccessRestriction public accessRestriction;
@@ -1408,13 +1419,14 @@ contract MTXTokenTest is Test {
         
         vm.prank(manager);
         vm.expectEmit(false, false, false, true);
-        emit IMTXToken.RateLimitingParamsUpdated(newMaxTxsPerWindow, newWindowSize, newMinTxInterval, newMaxTxsPerBlock, 100_000_000 * 10**18);
-        token.setRateLimitingParams(newMaxTxsPerWindow, newWindowSize, newMinTxInterval, newMaxTxsPerBlock, 100_000_000 * 10**18);
+        emit IMTXToken.RateLimitingParamsUpdated(newMaxTxsPerWindow, newWindowSize, newMinTxInterval, newMaxTxsPerBlock, 50_000_000 * 10**18);
+        token.setRateLimitingParams(newMaxTxsPerWindow, newWindowSize, newMinTxInterval, newMaxTxsPerBlock, 50_000_000 * 10**18);
         
         assertEq(token.maxTxsPerWindow(), newMaxTxsPerWindow);
         assertEq(token.windowSize(), newWindowSize);
         assertEq(token.minTxInterval(), newMinTxInterval);
         assertEq(token.maxTxsPerBlock(), newMaxTxsPerBlock);
+        assertEq(token.maxAmountPerWindow(), 50_000_000 * 10**18);
 
         address nonManager = makeAddr("nonManager");
         
@@ -1581,5 +1593,44 @@ contract MTXTokenTest is Test {
         token.mint(holder, burnAmount);
     }
 
+    // ============ _update mint-cap check (from == address(0)) via harness ============
+
+    function testInternalMintUpToMaxSupply_UsesUpdateCheck() public {
+        // Deploy fresh harness token
+        MockLayerZeroEndpointV2 lz = new MockLayerZeroEndpointV2();
+        MTXTokenHarness h = new MTXTokenHarness(address(lz), owner, address(accessRestriction));
+
+        address recipient = makeAddr("recipient_update_cap");
+        uint256 maxSupply = h.MAX_SUPPLY();
+
+        // Mint in two chunks that sum exactly to MAX_SUPPLY
+        uint256 part1 = maxSupply - 1;
+        uint256 part2 = 1;
+
+        h.harnessMint(recipient, part1);
+        assertEq(h.totalSupply(), part1);
+        assertEq(h.balanceOf(recipient), part1);
+
+        h.harnessMint(recipient, part2); // should succeed at exact cap
+        assertEq(h.totalSupply(), maxSupply);
+        assertEq(h.balanceOf(recipient), maxSupply);
+    }
+
+    function testInternalMintBeyondMaxSupply_RevertsFromUpdate() public {
+        // Deploy fresh harness token
+        MockLayerZeroEndpointV2 lz = new MockLayerZeroEndpointV2();
+        MTXTokenHarness h = new MTXTokenHarness(address(lz), owner, address(accessRestriction));
+
+        address recipient = makeAddr("recipient_update_cap_revert");
+        uint256 maxSupply = h.MAX_SUPPLY();
+
+        // Fill to max
+        h.harnessMint(recipient, maxSupply);
+        assertEq(h.totalSupply(), maxSupply);
+
+        // Any further mint must revert due to the _update check when from == address(0)
+        vm.expectRevert(bytes("MTXToken: minting would exceed max supply"));
+        h.harnessMint(recipient, 1);
+    }
 }
 

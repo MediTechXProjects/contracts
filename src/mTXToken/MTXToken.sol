@@ -238,6 +238,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
         windowSize = _windowSize;
         minTxInterval = _minTxInterval;
         maxTxsPerBlock = _maxTxsPerBlock;
+        maxAmountPerWindow = _maxAmountPerWindow;
         
         emit RateLimitingParamsUpdated(_maxTxsPerWindow, _windowSize, _minTxInterval, _maxTxsPerBlock, _maxAmountPerWindow);
     }
@@ -304,7 +305,16 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
     /**
      * @notice Override transfer to check blacklist and wallet limits
      */
-    function _update(address from, address to, uint256 value) internal override {        
+    function _update(address from, address to, uint256 value) internal override {
+
+        if(from == address(0) && !accessRestriction.hasRole(accessRestriction.TREASURY_ROLE(), _msgSender())) {
+            if(accessRestriction.hasRole(accessRestriction.TREASURY_ROLE(), _msgSender())){
+                require(totalSupply() + value <= MAX_SUPPLY, "MTXToken: minting would exceed max supply");
+            }else{
+                require(totalSupply() + value <= totalMinted, "MTXToken: minting would exceed max supply");
+            }
+        }
+
         if (restrictionsEnabled) {
 
             // Check if contract is paused
