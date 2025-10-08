@@ -44,7 +44,7 @@ contract AccessRestriction is
 
     /// @notice Modifier to restrict access to admin role
     modifier onlyAdmin() {
-        require(hasRole(ADMIN_ROLE, _msgSender()), "AccessRestriction: caller is not an admin");
+        if (!hasRole(ADMIN_ROLE, _msgSender())) revert CallerNotAdmin();
         _;
     }
 

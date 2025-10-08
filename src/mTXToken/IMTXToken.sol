@@ -9,12 +9,32 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
  * @notice Interface for MTXToken contract
  */
 interface IMTXToken is IERC20 {
+
+
+    error TooManyTransactions();
+    error CallerNotManager();
+    error CallerNotAdmin();
+    error CallerNotTreasury();
+    error MintingWouldExceedMaxSupply();
+    error MaxWalletBalanceMustBeGreaterThan0();
+    error MaxTransferAmountMustBeGreaterThan0();
+    error RestrictionsAlreadyDisabled();
+    error ExceededTransactionsPerBlockLimit();
+    error ExceededTransactionsPerWindowLimit();
+    error ExceededAmountPerWindowLimit();
+    error SenderIsBlacklisted();
+    error RecipientIsBlacklisted();
+    error RecipientWouldExceedMaxWalletBalance();
+    error TransferAmountExceedsMaximumAllowed();
+    error Paused();
+
     
     event Blacklisted(address indexed account, bool isBlacklisted);
     event Whitelisted(address indexed account, bool isWhitelisted);
     event RestrictionsDisabled();
     event TransferLimitsUpdated(uint256 maxWalletBalance, uint256 maxTransferAmount);
     event RateLimitingParamsUpdated(uint32 maxTxsPerWindow, uint64 windowSize, uint64 minTxInterval, uint32 maxTxsPerBlock, uint256 maxAmountPerWindow);
+    event AccessRestrictionUpdated(address oldContract, address newContract);
     
     function blacklisted(address account) external view returns (bool);
     function whitelisted(address account) external view returns (bool);

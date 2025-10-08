@@ -9,6 +9,8 @@ import { IAccessControl } from "@openzeppelin/contracts/access/IAccessControl.so
  * @notice Interface for AccessRestriction contract
  */
 interface IAccessRestriction is IAccessControl {
+
+    error CallerNotAdmin();
     
     function pause() external;
     

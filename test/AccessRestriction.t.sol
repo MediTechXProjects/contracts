@@ -177,7 +177,7 @@ contract AccessRestrictionTest is Test {
         
         // Manager cannot pause (only admins can)
         vm.prank(manager);
-        vm.expectRevert("AccessRestriction: caller is not an admin");
+        vm.expectRevert(abi.encodeWithSelector(IAccessRestriction.CallerNotAdmin.selector));
         accessRestriction.pause();
         
         assertFalse(accessRestriction.paused());
@@ -186,7 +186,7 @@ contract AccessRestrictionTest is Test {
     function testPauseFailsForNonAdmin() public {
         // Non-admin cannot pause
         vm.prank(user);
-        vm.expectRevert("AccessRestriction: caller is not an admin");
+        vm.expectRevert(abi.encodeWithSelector(IAccessRestriction.CallerNotAdmin.selector));
         accessRestriction.pause();
         
         assertFalse(accessRestriction.paused());
@@ -205,7 +205,7 @@ contract AccessRestrictionTest is Test {
         
         // Manager cannot unpause (only admins can)
         vm.prank(manager);
-        vm.expectRevert("AccessRestriction: caller is not an admin");
+        vm.expectRevert(abi.encodeWithSelector(IAccessRestriction.CallerNotAdmin.selector));
         accessRestriction.unpause();
         
         assertTrue(accessRestriction.paused());
@@ -222,7 +222,7 @@ contract AccessRestrictionTest is Test {
         
         // Non-admin cannot unpause
         vm.prank(user);
-        vm.expectRevert("AccessRestriction: caller is not an admin");
+        vm.expectRevert(abi.encodeWithSelector(IAccessRestriction.CallerNotAdmin.selector));
         accessRestriction.unpause();
         
         assertTrue(accessRestriction.paused());
@@ -377,12 +377,12 @@ contract AccessRestrictionTest is Test {
         
         // Verify managers cannot pause
         vm.prank(manager);
-        vm.expectRevert("AccessRestriction: caller is not an admin");
+        vm.expectRevert(abi.encodeWithSelector(IAccessRestriction.CallerNotAdmin.selector));
         accessRestriction.pause();
         
         // Verify managers cannot unpause
         vm.prank(manager2);
-        vm.expectRevert("AccessRestriction: caller is not an admin");
+        vm.expectRevert(abi.encodeWithSelector(IAccessRestriction.CallerNotAdmin.selector));
         accessRestriction.unpause();
     }
 

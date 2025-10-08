@@ -20,7 +20,8 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
     // Access restriction contract
     AccessRestriction public accessRestriction;
     
-    // Track total minted tokens (doesn't decrease when burned)
+    // totalMinted never decreases to ensure MAX_SUPPLY tracking.
+    // Burned tokens are excluded from totalSupply() only.
     uint256 public totalMinted;
     
     // Transfer limits (based on 1 billion total supply)
@@ -47,7 +48,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
     
     // Rate limiting parameters
     uint32  public maxTxsPerWindow = 3;
-    uint32  public maxTxsPerBlock = 2;
+    uint32  public maxTxsPerBlock = 1;
     uint64  public windowSize = 15 minutes;
     uint64  public minTxInterval = 1 minutes;
     uint256 public maxAmountPerWindow = 100_000_000 * 10**18;
@@ -68,7 +69,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      * @notice Modifier to restrict access to manager role
      */
     modifier onlyManager() {
-        require(accessRestriction.hasRole(accessRestriction.MANAGER_ROLE(), _msgSender()), "MTXToken: caller is not a manager");
+        if (!accessRestriction.hasRole(accessRestriction.MANAGER_ROLE(), _msgSender())) revert CallerNotManager();
         _;
     }
 
@@ -76,7 +77,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      * @notice Modifier to restrict access to admin role
      */
     modifier onlyAdmin() {
-        require(accessRestriction.hasRole(accessRestriction.ADMIN_ROLE(), _msgSender()), "MTXToken: caller is not an admin");
+        if (!accessRestriction.hasRole(accessRestriction.ADMIN_ROLE(), _msgSender())) revert CallerNotAdmin();
         _;
     }
 
@@ -84,7 +85,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      * @notice Modifier to restrict access to treasury role
      */
     modifier onlyTreasury() {
-        require(accessRestriction.hasRole(accessRestriction.TREASURY_ROLE(), _msgSender()), "MTXToken: caller is not treasury");
+        if (!accessRestriction.hasRole(accessRestriction.TREASURY_ROLE(), _msgSender())) revert CallerNotTreasury();
         _;
     }
 
@@ -102,7 +103,8 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      * @param amount The amount of tokens to mint
      */
     function mint(address to, uint256 amount) external onlyTreasury {
-        require(totalMinted + amount <= MAX_SUPPLY, "MTXToken: minting would exceed max supply");
+        if (totalMinted + amount > MAX_SUPPLY) revert MintingWouldExceedMaxSupply();
+
         totalMinted += amount;
         _mint(to, amount);
     }
@@ -113,7 +115,8 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      * @param _accessRestriction The new access restriction contract address
      * @dev Only callable by manager role
      */
-    function setAccessRestriction(address _accessRestriction) external onlyManager {
+    function setAccessRestriction(address _accessRestriction) external onlyAdmin {
+        emit AccessRestrictionUpdated(address(accessRestriction), _accessRestriction);
         accessRestriction = AccessRestriction(_accessRestriction);
     }
 
@@ -209,9 +212,9 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      * @param _maxTransferAmount Maximum transfer amount allowed
      */
     function setTransferLimits(uint256 _maxWalletBalance, uint256 _maxTransferAmount) external onlyManager {
-   
-        require(_maxWalletBalance > 0, "MTXToken: max wallet balance must be greater than 0");
-        require(_maxTransferAmount > 0, "MTXToken: max transfer amount must be greater than 0");
+
+        if (_maxWalletBalance == 0) revert MaxWalletBalanceMustBeGreaterThan0();
+        if (_maxTransferAmount == 0) revert MaxTransferAmountMustBeGreaterThan0();
         
         maxWalletBalance = _maxWalletBalance;
         maxTransferAmount = _maxTransferAmount;
@@ -248,7 +251,9 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      * This function can only be called once and makes the token fully unrestricted
      */
     function disableRestrictions() override external onlyAdmin {
-        require(restrictionsEnabled, "already disabled");
+
+        if (!restrictionsEnabled) revert RestrictionsAlreadyDisabled();
+        
         restrictionsEnabled = false;
         emit RestrictionsDisabled();
     }
@@ -265,8 +270,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
         uint64 currentBlock = uint64(block.number);
 
         if (checkTxInterval) {
-            require(currentTime >= rl.lastTxTime + minTxInterval,
-                "MTXToken: too many transactions, please wait");
+            if (currentTime < rl.lastTxTime + minTxInterval) revert TooManyTransactions();
         }
         
         if (checkBlockTxLimit) {
@@ -277,14 +281,13 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
                 rl.lastTxBlock = currentBlock;
             }
             
-            require(rl.blockTxCount < maxTxsPerBlock,
-                "MTXToken: exceeded transactions per block limit");
+            if (rl.blockTxCount > maxTxsPerBlock) revert ExceededTransactionsPerBlockLimit();
         }
         
         // Check transactions per window limit (if enabled)
         if (checkWindowTxLimit) {
 
-            if (currentTime > rl.windowStart + windowSize) {
+            if (currentTime >= rl.windowStart + windowSize) {
                 rl.windowStart = currentTime;
                 rl.txCount = 0;
                 rl.windowAmount = 0;
@@ -292,10 +295,8 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
 
             rl.txCount += 1;
             rl.windowAmount += amount;
-            require(rl.txCount <= maxTxsPerWindow,
-                "MTXToken: exceeded transactions per window limit");
-            require(rl.windowAmount <= maxAmountPerWindow,
-                "MTXToken: exceeded amount per window limit");
+            if (rl.txCount > maxTxsPerWindow) revert ExceededTransactionsPerWindowLimit();
+            if (rl.windowAmount > maxAmountPerWindow) revert ExceededAmountPerWindowLimit();
         }
         
         // Update last transaction time
@@ -307,36 +308,34 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      */
     function _update(address from, address to, uint256 value) internal override {
 
-        if(from == address(0) && !accessRestriction.hasRole(accessRestriction.TREASURY_ROLE(), _msgSender())) {
-            if(accessRestriction.hasRole(accessRestriction.TREASURY_ROLE(), _msgSender())){
-                require(totalSupply() + value <= MAX_SUPPLY, "MTXToken: minting would exceed max supply");
-            }else{
-                require(totalSupply() + value <= totalMinted, "MTXToken: minting would exceed max supply");
-            }
+        if(from == address(0)) {
+            bool isTreasury = accessRestriction.hasRole(accessRestriction.TREASURY_ROLE(), _msgSender());
+            uint256 limit = isTreasury ? MAX_SUPPLY : totalMinted;
+            if (totalSupply() + value > limit) revert MintingWouldExceedMaxSupply();
         }
 
         if (restrictionsEnabled) {
 
             // Check if contract is paused
-            require(!accessRestriction.paused(), "Pausable: paused");
+            if (accessRestriction.paused()) revert Paused();
 
             if(checkBlackList){
-                require(!blacklisted[from], "MTXToken: sender is blacklisted");
-                require(!blacklisted[to], "MTXToken: recipient is blacklisted");
+                if (blacklisted[from]) revert SenderIsBlacklisted();
+                if (blacklisted[to]) revert RecipientIsBlacklisted();
             }
 
             if(from != address(0) && to != address(0)){
                 
                 if(!whitelisted[to]){
                     if (checkMaxWalletBalance) { // Not a mint operation
-                        require(balanceOf(to) + value <= maxWalletBalance, "MTXToken: recipient would exceed maximum wallet balance");
+                        if (balanceOf(to) + value > maxWalletBalance) revert RecipientWouldExceedMaxWalletBalance();
                     }
                 }
 
                 if(!whitelisted[from]){
 
                     if(checkMaxTransfer){
-                        require(value <= maxTransferAmount, "MTXToken: transfer amount exceeds maximum allowed");
+                        if (value > maxTransferAmount) revert TransferAmountExceedsMaximumAllowed();
                     }
                     
                     _checkRateLimit(from, value);                    

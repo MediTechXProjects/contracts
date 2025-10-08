@@ -79,7 +79,7 @@ contract MTXTokenTest is Test {
         assertEq(token.maxTxsPerWindow(), 3);
         assertEq(token.windowSize(), 15 minutes);
         assertEq(token.minTxInterval(), 1 minutes);
-        assertEq(token.maxTxsPerBlock(), 2);
+        assertEq(token.maxTxsPerBlock(), 1);
 
         // Test initial state flags
         assertTrue(token.restrictionsEnabled());
@@ -128,12 +128,12 @@ contract MTXTokenTest is Test {
         
         // Test addToBlacklist
         vm.prank(nonManager);
-        vm.expectRevert("MTXToken: caller is not a manager");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
         token.addToBlacklist(user);
         
         // Test removeFromBlacklist
         vm.prank(nonManager);
-        vm.expectRevert("MTXToken: caller is not a manager");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
         token.removeFromBlacklist(user);
     }
 
@@ -174,12 +174,12 @@ contract MTXTokenTest is Test {
         
         // Test addToWhitelist
         vm.prank(nonManager);
-        vm.expectRevert("MTXToken: caller is not a manager");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
         token.addToWhitelist(user);
         
         // Test removeFromWhitelist
         vm.prank(nonManager);
-        vm.expectRevert("MTXToken: caller is not a manager");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
         token.removeFromWhitelist(user);
     }
 
@@ -203,8 +203,9 @@ contract MTXTokenTest is Test {
         vm.stopPrank();
         
         // Test that manager can set new access restriction
-        vm.prank(manager);
+        vm.startPrank(owner);
         token.setAccessRestriction(newAccessRestrictionProxy);
+        vm.stopPrank();
         
         // Verify the access restriction was updated
         assertEq(address(token.accessRestriction()), newAccessRestrictionProxy);
@@ -216,7 +217,7 @@ contract MTXTokenTest is Test {
         
         // Test that non-manager cannot set access restriction
         vm.prank(nonManager);
-        vm.expectRevert("MTXToken: caller is not a manager");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotAdmin.selector));
         token.setAccessRestriction(newAccessRestriction);
         
         // Verify the access restriction was not changed
@@ -225,16 +226,16 @@ contract MTXTokenTest is Test {
 
     function testSetAccessRestrictionWithZeroAddress() public {
         // Test that setting zero address is allowed (no validation in the function)
-        vm.prank(manager);
+        vm.startPrank(owner);
         token.setAccessRestriction(address(0));
-        
+        vm.stopPrank();
         // Verify the access restriction was updated to zero address
         assertEq(address(token.accessRestriction()), address(0));
     }
 
     function testSetAccessRestrictionWithSameAddress() public {
         // Test setting the same access restriction address
-        vm.prank(manager);
+        vm.prank(owner);
         token.setAccessRestriction(address(accessRestriction));
         
         // Verify the access restriction remains the same
@@ -245,7 +246,7 @@ contract MTXTokenTest is Test {
         // Test setting an address that is not a valid AccessRestriction contract
         address invalidContract = makeAddr("invalidContract");
         
-        vm.prank(manager);
+        vm.prank(owner);
         token.setAccessRestriction(invalidContract);
         
         // Verify the access restriction was updated (no validation in the function)
@@ -275,12 +276,12 @@ contract MTXTokenTest is Test {
         vm.stopPrank();
         
         // Set the new access restriction
-        vm.prank(manager);
+        vm.prank(owner);
         token.setAccessRestriction(newAccessRestrictionProxy);
         
         // Test that the old manager can no longer call manager functions
         vm.prank(manager);
-        vm.expectRevert("MTXToken: caller is not a manager");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
         token.addToBlacklist(makeAddr("user"));
         
         // Test that the new manager can call manager functions
@@ -311,17 +312,18 @@ contract MTXTokenTest is Test {
         vm.stopPrank();
         
         // Set the new access restriction
-        vm.prank(manager);
+        vm.startPrank(owner);
         token.setAccessRestriction(newAccessRestrictionProxy);
+        vm.stopPrank();
         
         // Mint some tokens first using the new treasury
         vm.prank(newTreasury);
-        vm.expectRevert("Pausable: paused");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.Paused.selector));
         token.mint(owner, 1000 * 10**18);
         
         // Test that transfers are blocked when the new access restriction is paused
         vm.prank(owner);
-        vm.expectRevert("Pausable: paused");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.Paused.selector));
         token.transfer(makeAddr("recipient"), 100 * 10**18);
     }
 
@@ -341,7 +343,7 @@ contract MTXTokenTest is Test {
         address nonManager = makeAddr("nonManager");
 
         vm.prank(nonManager);
-        vm.expectRevert("MTXToken: caller is not a manager");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
         token.setCheckTxInterval(false);
     }
 
@@ -379,7 +381,7 @@ contract MTXTokenTest is Test {
         assertEq(token.balanceOf(user), 900 * 10**18);        
         // Second transaction should fail due to interval time restriction
         vm.prank(user);
-        vm.expectRevert("MTXToken: too many transactions, please wait");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.TooManyTransactions.selector));
         token.transfer(recipient2, 100 * 10**18);
         
         // Verify second transaction failed (recipient2 should have 0 balance)
@@ -462,7 +464,7 @@ contract MTXTokenTest is Test {
         
         // Second transaction should fail (only 30 seconds needed, but we haven't waited)
         vm.prank(user);
-        vm.expectRevert("MTXToken: too many transactions, please wait");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.TooManyTransactions.selector));
         token.transfer(recipient2, 100 * 10**18);
         
         // Wait 30 seconds
@@ -494,7 +496,7 @@ contract MTXTokenTest is Test {
         address nonManager = makeAddr("nonManager");
         
         vm.prank(nonManager);
-        vm.expectRevert("MTXToken: caller is not a manager");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
         token.setCheckBlockTxLimit(false);
     }
 
@@ -514,7 +516,7 @@ contract MTXTokenTest is Test {
         address nonManager = makeAddr("nonManager");
         
         vm.prank(nonManager);
-        vm.expectRevert("MTXToken: caller is not a manager");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
         token.setCheckWindowTxLimit(false);
     }
 
@@ -534,7 +536,7 @@ contract MTXTokenTest is Test {
         address nonManager = makeAddr("nonManager");
 
         vm.prank(nonManager);
-        vm.expectRevert("MTXToken: caller is not a manager");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
         token.setCheckBlackList(false);
     }
 
@@ -554,7 +556,7 @@ contract MTXTokenTest is Test {
         address nonManager = makeAddr("nonManager");
 
         vm.prank(nonManager);
-        vm.expectRevert("MTXToken: caller is not a manager");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
         token.setCheckMaxTransfer(false);
     }
 
@@ -574,7 +576,7 @@ contract MTXTokenTest is Test {
         address nonManager = makeAddr("nonManager");
         
         vm.prank(nonManager);
-        vm.expectRevert("MTXToken: caller is not a manager");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
         token.setCheckMaxWalletBalance(false);
     }
 
@@ -605,7 +607,7 @@ contract MTXTokenTest is Test {
         
         // Test transfer that would exceed recipient's wallet limit (60 million more) - should fail
         vm.prank(sender);
-        vm.expectRevert("MTXToken: recipient would exceed maximum wallet balance");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.RecipientWouldExceedMaxWalletBalance.selector));
         token.transfer(recipient, 60_000_000 * 10**18);
         
         // Verify balance unchanged after failed transfer
@@ -637,7 +639,7 @@ contract MTXTokenTest is Test {
         token.setCheckWindowTxLimit(false);
         
         vm.prank(sender);
-        vm.expectRevert("MTXToken: recipient would exceed maximum wallet balance");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.RecipientWouldExceedMaxWalletBalance.selector));
         token.transfer(recipient, 120_000_000 * 10**18);
         
         // Verify no transfer happened
@@ -692,7 +694,7 @@ contract MTXTokenTest is Test {
         
         // Regular recipient should be limited to 100 million tokens
         vm.prank(sender);
-        vm.expectRevert("MTXToken: recipient would exceed maximum wallet balance");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.RecipientWouldExceedMaxWalletBalance.selector));
         token.transfer(regularRecipient, 120_000_000 * 10**18);
         
         // Whitelisted recipient should bypass the wallet limit
@@ -729,8 +731,8 @@ contract MTXTokenTest is Test {
         vm.prank(manager);
         token.setCheckTxInterval(false);
         
-        // Current max transactions per block is 2
-        assertEq(token.maxTxsPerBlock(), 2);
+        // Current max transactions per block is 1
+        assertEq(token.maxTxsPerBlock(), 1);
         
         // First transaction in block should succeed
         vm.prank(user);
@@ -739,7 +741,7 @@ contract MTXTokenTest is Test {
         
         // Second transaction in same block should succeed
         vm.prank(user);
-        vm.expectRevert("MTXToken: exceeded transactions per block limit");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededTransactionsPerBlockLimit.selector));
         token.transfer(recipient2, 1_000_000 * 10**18);
                 
         // Verify third transaction failed
@@ -777,7 +779,7 @@ contract MTXTokenTest is Test {
         
         // Third transaction should fail
         vm.prank(user);
-        vm.expectRevert("MTXToken: exceeded transactions per block limit");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededTransactionsPerBlockLimit.selector));
         token.transfer(recipient2, 1_000_000 * 10**18);
         
         // Now disable block limit check
@@ -836,7 +838,7 @@ contract MTXTokenTest is Test {
         vm.prank(user);
         token.transfer(recipient1, 1_000_000 * 10**18);
         vm.prank(user);
-        vm.expectRevert("MTXToken: exceeded transactions per block limit");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededTransactionsPerBlockLimit.selector));
         token.transfer(recipient2, 1_000_000 * 10**18);
         
         // Whitelisted user should bypass block limit
@@ -903,7 +905,7 @@ contract MTXTokenTest is Test {
         
         // Fourth transaction in same window should fail
         vm.prank(user);
-        vm.expectRevert("MTXToken: exceeded transactions per window limit");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededTransactionsPerWindowLimit.selector));
         token.transfer(recipient4, 1_000_000 * 10**18);
         
         // Verify fourth transaction failed
@@ -948,7 +950,7 @@ contract MTXTokenTest is Test {
         
         // Fourth transaction should fail
         vm.prank(user);
-        vm.expectRevert("MTXToken: exceeded transactions per window limit");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededTransactionsPerWindowLimit.selector));
         token.transfer(recipient4, 1_000_000 * 10**18);
         
         // Now disable window limit check
@@ -1014,7 +1016,7 @@ contract MTXTokenTest is Test {
         
         // Fourth transaction should fail for regular user
         vm.prank(user);
-        vm.expectRevert("MTXToken: exceeded transactions per window limit");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededTransactionsPerWindowLimit.selector));
         token.transfer(recipient4, 1_000_000 * 10**18);
         
         // Whitelisted user should bypass window limit
@@ -1078,7 +1080,7 @@ contract MTXTokenTest is Test {
         
         // Third transfer that would exceed window amount limit should fail
         vm.prank(user);
-        vm.expectRevert("MTXToken: exceeded amount per window limit");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededAmountPerWindowLimit.selector));
         token.transfer(recipient3, 30_000_000 * 10**18);
         
         // Verify third transfer failed
@@ -1121,7 +1123,7 @@ contract MTXTokenTest is Test {
         
         // Third transfer should fail (exceeds 100M window limit)
         vm.prank(user);
-        vm.expectRevert("MTXToken: exceeded amount per window limit");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededAmountPerWindowLimit.selector));
         token.transfer(recipient3, 30_000_000 * 10**18);
         
         // Now disable window limit check
@@ -1181,7 +1183,7 @@ contract MTXTokenTest is Test {
         
         // Third transfer should fail for regular user (exceeds 100M window limit)
         vm.prank(user);
-        vm.expectRevert("MTXToken: exceeded amount per window limit");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededAmountPerWindowLimit.selector));
         token.transfer(recipient3, 30_000_000 * 10**18);
         
         // Whitelisted user should bypass window amount limit
@@ -1240,7 +1242,7 @@ contract MTXTokenTest is Test {
         
         // Third transfer that would exceed window amount limit should fail
         vm.prank(user);
-        vm.expectRevert("MTXToken: exceeded amount per window limit");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededAmountPerWindowLimit.selector));
         token.transfer(recipient3, 30_000_000 * 10**18);
         
         // Verify third transfer failed
@@ -1283,21 +1285,21 @@ contract MTXTokenTest is Test {
         address nonManager = makeAddr("nonManager");
         
         vm.prank(nonManager);
-        vm.expectRevert("MTXToken: caller is not a manager");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
         token.setTransferLimits(100, 100);
     }
 
     function testSetTransferLimitsWithZeroValues() public {
         vm.prank(manager);
-        vm.expectRevert("MTXToken: max wallet balance must be greater than 0");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MaxWalletBalanceMustBeGreaterThan0.selector));
         token.setTransferLimits(0, 100);
 
         vm.prank(manager);
-        vm.expectRevert("MTXToken: max wallet balance must be greater than 0"); 
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MaxWalletBalanceMustBeGreaterThan0.selector)); 
         token.setTransferLimits(0, 0);
 
         vm.prank(manager);
-        vm.expectRevert("MTXToken: max transfer amount must be greater than 0");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MaxTransferAmountMustBeGreaterThan0.selector));
         token.setTransferLimits(100, 0);
     }
 
@@ -1322,7 +1324,7 @@ contract MTXTokenTest is Test {
         
         // Test transfer exceeding limit (6 million tokens) - should fail
         vm.prank(user);
-        vm.expectRevert("MTXToken: transfer amount exceeds maximum allowed");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.TransferAmountExceedsMaximumAllowed.selector));
         token.transfer(recipient, 6_000_000 * 10**18);
         
         // Verify balance unchanged after failed transfer
@@ -1352,7 +1354,7 @@ contract MTXTokenTest is Test {
         token.setCheckTxInterval(false);
         
         vm.prank(user);
-        vm.expectRevert("MTXToken: transfer amount exceeds maximum allowed");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.TransferAmountExceedsMaximumAllowed.selector));
         token.transfer(recipient, 20_000_000 * 10**18);
         
         // Verify no transfer happened
@@ -1399,7 +1401,7 @@ contract MTXTokenTest is Test {
         
         // Regular user should be limited
         vm.prank(user);
-        vm.expectRevert("MTXToken: transfer amount exceeds maximum allowed");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.TransferAmountExceedsMaximumAllowed.selector));
         token.transfer(recipient, 6_000_000 * 10**18);
         
         // Whitelisted user should bypass the limit
@@ -1431,7 +1433,7 @@ contract MTXTokenTest is Test {
         address nonManager = makeAddr("nonManager");
         
         vm.prank(nonManager);
-        vm.expectRevert("MTXToken: caller is not a manager");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
         token.setRateLimitingParams(1, 1, 1, 1, 100_000_000 * 10**18);
     }
 
@@ -1454,7 +1456,7 @@ contract MTXTokenTest is Test {
 
         // Non-treasury cannot mint
         vm.prank(notTreasury);
-        vm.expectRevert("MTXToken: caller is not treasury");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotTreasury.selector));
         token.mint(recipient, 1);
 
         // Treasury can mint
@@ -1478,7 +1480,7 @@ contract MTXTokenTest is Test {
 
         // Any additional mint should fail
         vm.prank(treasury);
-        vm.expectRevert("MTXToken: minting would exceed max supply");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
         token.mint(recipient, 1);
     }
 
@@ -1496,7 +1498,7 @@ contract MTXTokenTest is Test {
 
         // Cannot mint more while at cap
         vm.prank(treasury);
-        vm.expectRevert("MTXToken: minting would exceed max supply");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
         token.mint(holder, 1);
 
         // Burn 200M from holder
@@ -1509,7 +1511,7 @@ contract MTXTokenTest is Test {
 
         // Now minting should still fail because totalMinted is still at max supply
         vm.prank(treasury);
-        vm.expectRevert("MTXToken: minting would exceed max supply");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
         token.mint(holder, twoHundredMillion);
     }
 
@@ -1566,7 +1568,7 @@ contract MTXTokenTest is Test {
 
         // Any additional mint should fail
         vm.prank(treasury);
-        vm.expectRevert("MTXToken: minting would exceed max supply");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
         token.mint(holder1, 1);
     }
 
@@ -1589,7 +1591,7 @@ contract MTXTokenTest is Test {
 
         // Cannot mint more even after burning because totalMinted is still at max
         vm.prank(treasury);
-        vm.expectRevert("MTXToken: minting would exceed max supply");
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
         token.mint(holder, burnAmount);
     }
 
@@ -1603,18 +1605,48 @@ contract MTXTokenTest is Test {
         address recipient = makeAddr("recipient_update_cap");
         uint256 maxSupply = h.MAX_SUPPLY();
 
-        // Mint in two chunks that sum exactly to MAX_SUPPLY
-        uint256 part1 = maxSupply - 1;
-        uint256 part2 = 1;
+        // First mint some tokens via treasury to set totalMinted
+        vm.startPrank(treasury);
+        h.mint(recipient, 100_000_000 * 10**18); // 100M tokens
+        assertEq(h.totalMinted(), 100_000_000 * 10**18);
 
-        h.harnessMint(recipient, part1);
-        assertEq(h.totalSupply(), part1);
-        assertEq(h.balanceOf(recipient), part1);
+        uint256 remainingMintable = h.totalMinted() - h.totalSupply();
+        assertTrue(remainingMintable == 0);
 
-        h.harnessMint(recipient, part2); // should succeed at exact cap
-        assertEq(h.totalSupply(), maxSupply);
-        assertEq(h.balanceOf(recipient), maxSupply);
+        h.harnessMint(recipient, 100_000_000 * 10**18); // should succeed at totalMinted cap
+        assertEq(h.totalSupply(), 200_000_000 * 10**18);
+        assertEq(h.balanceOf(recipient), 200_000_000 * 10**18);
+        assertEq(h.totalMinted(), 100_000_000 * 10**18);
+
+        vm.stopPrank();
     }
+
+
+    function checkTotalMinted() public {
+        // Deploy fresh harness token
+        MockLayerZeroEndpointV2 lz = new MockLayerZeroEndpointV2();
+        MTXTokenHarness h = new MTXTokenHarness(address(lz), owner, address(accessRestriction));
+
+        address recipient = makeAddr("recipient_update_cap");
+        uint256 maxSupply = h.MAX_SUPPLY();
+
+        // First mint some tokens via treasury to set totalMinted
+        vm.prank(treasury);
+        h.mint(recipient, 100_000_000 * 10**18); // 100M tokens
+        assertEq(h.totalMinted(), 100_000_000 * 10**18);
+        assertEq(h.totalSupply(), 100_000_000 * 10**18);
+        assertEq(h.balanceOf(recipient), 100_000_000 * 10**18);
+
+
+        vm.warp(block.timestamp + 15 minutes);
+        vm.prank(treasury);
+        h.mint(recipient, 900_000_000 * 10**18); // 100M tokens
+        assertEq(h.totalMinted(), 1_000_000_000 * 10**18);
+        assertEq(h.totalSupply(), 1_000_000_000 * 10**18);
+        assertEq(h.balanceOf(recipient), 1_000_000_000 * 10**18);
+    }
+
+
 
     function testInternalMintBeyondMaxSupply_RevertsFromUpdate() public {
         // Deploy fresh harness token
@@ -1622,14 +1654,46 @@ contract MTXTokenTest is Test {
         MTXTokenHarness h = new MTXTokenHarness(address(lz), owner, address(accessRestriction));
 
         address recipient = makeAddr("recipient_update_cap_revert");
+
+        vm.startPrank(treasury);
+        h.mint(recipient, 50_000_000 * 10**18); // 50M tokens
+        assertEq(h.totalMinted(), 50_000_000 * 10**18);
+        assertEq(h.totalSupply(), 50_000_000 * 10**18);
+        assertEq(h.balanceOf(recipient), 50_000_000 * 10**18);
+
+        h.harnessMint(recipient, h.totalMinted());
+        assertEq(h.totalSupply(), h.totalMinted() + 50_000_000 * 10**18);
+
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 15 minutes);
+
+        vm.startPrank(recipient);
+
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
+        h.harnessMint(recipient, 1);
+        
+        vm.stopPrank();
+    }
+
+    function testInternalMintWithTreasuryRole_UsesMaxSupplyCheck() public {
+        // Deploy fresh harness token
+        MockLayerZeroEndpointV2 lz = new MockLayerZeroEndpointV2();
+        MTXTokenHarness h = new MTXTokenHarness(address(lz), owner, address(accessRestriction));
+
+        address recipient = makeAddr("recipient_treasury_check");
         uint256 maxSupply = h.MAX_SUPPLY();
 
-        // Fill to max
+        // Test that treasury can mint up to MAX_SUPPLY via internal _mint
+        // This tests the treasury role path in _update
+        vm.prank(treasury);
         h.harnessMint(recipient, maxSupply);
         assertEq(h.totalSupply(), maxSupply);
+        assertEq(h.balanceOf(recipient), maxSupply);
 
-        // Any further mint must revert due to the _update check when from == address(0)
-        vm.expectRevert(bytes("MTXToken: minting would exceed max supply"));
+        // Any further mint by treasury should also revert
+        vm.prank(treasury);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
         h.harnessMint(recipient, 1);
     }
 }
