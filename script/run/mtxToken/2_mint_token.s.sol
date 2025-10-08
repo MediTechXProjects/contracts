@@ -6,7 +6,7 @@ import { MTXToken } from "./../../../src/mTXToken/MTXToken.sol";
 
 contract MintToken is Script {
     function run() external {
-        address tokenAddress = 0x0435c5C579E9a808383563Ae50D1Db5D16c312B5;
+        address tokenAddress = 0xfb8B2ddB4f5128aCb8b2d7783b559CDF0Df63369;
         address userAddress = 0xe7A38d4d4D1ebc4e441f76a70AD7CE7a5D78531C;
         uint256 amountToMint = 5_000_000 * 10**18; // 1 million tokens
 

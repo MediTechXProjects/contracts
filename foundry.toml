@@ -32,6 +32,6 @@ exclude = ["script/**", "src/mock/**"]
 
 [rpc_endpoints]
 mainnet = "${RPC_URL}"
-sepolia = "${RPC_URL_TEST}"
+sepolia = "${RPC_URL_SEPOLIA}"
 amoy = "${RPC_URL_AMOY}"
 base = "${RPC_URL_BASE_SEPOLIA}"

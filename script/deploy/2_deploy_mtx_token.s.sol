@@ -7,9 +7,9 @@ import { MTXToken } from "../../src/mTXToken/MTXToken.sol";
 contract DeployMTXToken is Script {
     function run() external {
         // Replace these env vars with your own values
-        address lzEndpoint = vm.envAddress("ENDPOINT_AMOY_ADDRESS");
+        address lzEndpoint = vm.envAddress("ENDPOINT_ADDRESS");
         address owner = vm.envAddress("OWNER_ADDRESS");
-        address accessRestriction = 0xe6C7a461766914f114Ecb91D77B851278A51452C;
+        address accessRestriction = 0x3349D753a2f14855f876EDAA85287F3C82a4a863;
 
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
         MTXToken mtxToken = new MTXToken(lzEndpoint, owner, accessRestriction);
