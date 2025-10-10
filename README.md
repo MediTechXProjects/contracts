@@ -71,3 +71,12 @@ if(from != address(0) && to != address(0)){
   - Maximum transactions per time window
   - Minimum interval between consecutive transactions
 
+  ### 7️⃣ Source Chain Clarification
+
+- **Important:** Direct minting is **only allowed on the Source Chain**.
+- Destination chains (other bridges) **do not mint directly**.
+- Tokens arriving from other chains via the OFT bridge are **reissued logically** without modifying `totalMinted`.
+- This design ensures that `MAX_SUPPLY` and `totalMinted` limits apply **only to tokens physically minted on the Source Chain**.  
+  Tokens transferred between chains are exempt from this restriction.
+
+
