@@ -106,6 +106,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
         if (totalMinted + amount > MAX_SUPPLY) revert MintingWouldExceedMaxSupply();
 
         totalMinted += amount;
+        
         _mint(to, amount);
     }
 
@@ -309,9 +310,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
     function _update(address from, address to, uint256 value) internal override {
 
         if(from == address(0)) {
-            bool isTreasury = accessRestriction.hasRole(accessRestriction.TREASURY_ROLE(), _msgSender());
-            uint256 limit = isTreasury ? MAX_SUPPLY : totalMinted;
-            if (totalSupply() + value > limit) revert MintingWouldExceedMaxSupply();
+            if (totalSupply() + value > MAX_SUPPLY) revert MintingWouldExceedMaxSupply();
         }
 
         if (restrictionsEnabled) {

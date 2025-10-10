@@ -1646,36 +1646,6 @@ contract MTXTokenTest is Test {
         assertEq(h.balanceOf(recipient), 1_000_000_000 * 10**18);
     }
 
-
-
-    function testInternalMintBeyondMaxSupply_RevertsFromUpdate() public {
-        // Deploy fresh harness token
-        MockLayerZeroEndpointV2 lz = new MockLayerZeroEndpointV2();
-        MTXTokenHarness h = new MTXTokenHarness(address(lz), owner, address(accessRestriction));
-
-        address recipient = makeAddr("recipient_update_cap_revert");
-
-        vm.startPrank(treasury);
-        h.mint(recipient, 50_000_000 * 10**18); // 50M tokens
-        assertEq(h.totalMinted(), 50_000_000 * 10**18);
-        assertEq(h.totalSupply(), 50_000_000 * 10**18);
-        assertEq(h.balanceOf(recipient), 50_000_000 * 10**18);
-
-        h.harnessMint(recipient, h.totalMinted());
-        assertEq(h.totalSupply(), h.totalMinted() + 50_000_000 * 10**18);
-
-        vm.stopPrank();
-
-        vm.warp(block.timestamp + 15 minutes);
-
-        vm.startPrank(recipient);
-
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
-        h.harnessMint(recipient, 1);
-        
-        vm.stopPrank();
-    }
-
     function testInternalMintWithTreasuryRole_UsesMaxSupplyCheck() public {
         // Deploy fresh harness token
         MockLayerZeroEndpointV2 lz = new MockLayerZeroEndpointV2();
