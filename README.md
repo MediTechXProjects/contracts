@@ -29,3 +29,45 @@ if(from == address(0)) {
   - **Treasury mint:** allowed up to `MAX_SUPPLY` (new tokens issued by admin/treasury)
   - **Other mint paths** (e.g., bridge): allowed only up to `totalMinted`, preventing excessive issuance
 - **Note:** `totalMinted` is only incremented inside the `mint()` function. Other mint paths, such as bridge re-issuances, **do not increase `totalMinted`**.
+
+
+## 3️⃣ Restrictions Enabled Check
+
+```solidity
+if (restrictionsEnabled) {
+    if (accessRestriction.paused()) revert Paused();
+```
+- Ensures no transactions occur if the contract is **paused**.
+
+## 4️⃣ Blacklist Enforcement
+
+```solidity
+if(checkBlackList){
+    if (blacklisted[from]) revert SenderIsBlacklisted();
+    if (blacklisted[to]) revert RecipientIsBlacklisted();
+}
+```
+- Prevents blacklisted addresses from sending or receiving tokens.
+
+## 5️⃣ Wallet & Transfer Limits
+
+```solidity
+if(from != address(0) && to != address(0)){
+    if(!whitelisted[to] && checkMaxWalletBalance){
+        if (balanceOf(to) + value > maxWalletBalance) revert RecipientWouldExceedMaxWalletBalance();
+    }
+
+    if(!whitelisted[from]){
+        if(checkMaxTransfer && value > maxTransferAmount) revert TransferAmountExceedsMaximumAllowed();
+        _checkRateLimit(from, value);                    
+    }
+}
+```
+- These checks **only apply to normal transfers**, not mint operations.
+- **Recipient wallet limit:** enforced if the recipient is not whitelisted.
+- **Sender transfer limit:** enforced if the sender is not whitelisted.
+- **Rate limiting:** ensures users cannot spam transactions, including:
+  - Maximum transactions per block
+  - Maximum transactions per time window
+  - Minimum interval between consecutive transactions
+
