@@ -30,8 +30,15 @@ if(from == address(0)) {
   - **Other mint paths** (e.g., bridge): allowed only up to `totalMinted`, preventing excessive issuance
 - **Note:** `totalMinted` is only incremented inside the `mint()` function. Other mint paths, such as bridge re-issuances, **do not increase `totalMinted`**.
 
+## 3️⃣ Source Chain Clarification
 
-## 3️⃣ Restrictions Enabled Check
+- **Direct minting is only allowed on the Source Chain.** No tokens can be minted directly on destination chains.
+- Tokens transferred via the OFT bridge from other chains are **reissued logically** on the destination chain; this process does **not** increase `totalMinted`.
+- As a result, `MAX_SUPPLY` and `totalMinted` limits apply **only to tokens minted on the Source Chain**.
+- Tokens moving between chains through the bridge are **exempt from these minting limits**, ensuring cross-chain transfers do not violate supply constraints.
+
+
+## 4️⃣ Restrictions Enabled Check
 
 ```solidity
 if (restrictionsEnabled) {
@@ -39,7 +46,7 @@ if (restrictionsEnabled) {
 ```
 - Ensures no transactions occur if the contract is **paused**.
 
-## 4️⃣ Blacklist Enforcement
+## 5️⃣ Blacklist Enforcement
 
 ```solidity
 if(checkBlackList){
@@ -49,7 +56,7 @@ if(checkBlackList){
 ```
 - Prevents blacklisted addresses from sending or receiving tokens.
 
-## 5️⃣ Wallet & Transfer Limits
+## 6️⃣ Wallet & Transfer Limits
 
 ```solidity
 if(from != address(0) && to != address(0)){
@@ -70,12 +77,4 @@ if(from != address(0) && to != address(0)){
   - Maximum transactions per block
   - Maximum transactions per time window
   - Minimum interval between consecutive transactions
-
-## 7️⃣ Source Chain Clarification
-
-- **Direct minting is only allowed on the Source Chain.** No tokens can be minted directly on destination chains.
-- Tokens transferred via the OFT bridge from other chains are **reissued logically** on the destination chain; this process does **not** increase `totalMinted`.
-- As a result, `MAX_SUPPLY` and `totalMinted` limits apply **only to tokens minted on the Source Chain**.
-- Tokens moving between chains through the bridge are **exempt from these minting limits**, ensuring cross-chain transfers do not violate supply constraints.
-
 
