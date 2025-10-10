@@ -29,6 +29,8 @@ if(from == address(0)) {
   - **Treasury mint:** allowed up to `MAX_SUPPLY` (new tokens issued by admin/treasury)
   - **Other mint paths** (e.g., bridge): allowed only up to `totalMinted`, preventing excessive issuance
 - **Note:** `totalMinted` is only incremented inside the `mint()` function. Other mint paths, such as bridge re-issuances, **do not increase `totalMinted`**.
+- **Note:** Bridge reissuances do not increment totalMinted, so _update ensures that the bridge cannot mint more than what was originally minted by Treasury.
+- **Note:** This mechanism enforces the maximum supply constraint on tokens minted on the Source Chain while allowing safe cross-chain transfers.
 
 ## 3️⃣ Source Chain Clarification
 
