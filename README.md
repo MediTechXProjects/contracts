@@ -64,21 +64,26 @@ The token ensures secure, controlled, and predictable behavior across all suppor
   When a user sends tokens from Chain A → Chain B, the tokens are **burned** on Chain A.
 
 - **Mint on Destination:**  
-  The LayerZero OFT protocol triggers a **re-mint** of the same token amount on Chain B.
+  The LayerZero OFT protocol triggers a **re-mint** of the same token amount on Chain B.  
+  This process does **not** count as new minting — it simply restores already existing supply on the destination chain.
+
+- **Source Chain Treasury Mint Only:**  
+  The **Treasury** is the **only entity allowed to perform actual minting**, and this can **only occur on the Source Chain**.  
+  Other chains cannot mint new tokens independently — they only reissue tokens that were previously minted and burned via the OFT bridge.
 
 - **Supply Enforcement:**  
   The `_update()` function ensures that the **aggregate token supply across all chains** never exceeds the defined `MAX_SUPPLY`.
 
 - **Mint Path Limitation:**  
-  Only the Treasury can perform new minting operations.  
-  Cross-chain bridges (non-treasury mint paths) are **strictly limited by `totalMinted`**, ensuring no additional supply inflation occurs.
+  Cross-chain bridge operations (non-treasury mint paths) are **strictly limited by `totalMinted`**, ensuring that global supply cannot increase beyond what the Treasury has issued on the Source Chain.
 
 ### 🧠 Summary
 
-- ✅ **Cross-chain transfers are supply-neutral** — tokens burned on one chain are reissued on another.  
-- ✅ **`MAX_SUPPLY` is globally enforced** across all networks.  
-- ✅ **Bridges cannot inflate supply**, as `_update()` compares against `totalMinted` on the source chain.  
-- ⚙️ Fully compatible with the **LayerZero OFT** framework for interoperability and security.
+- ✅ Tokens are **burned on the source chain** and **re-minted** on the destination chain (supply-neutral).  
+- ✅ **Actual minting** can **only** be performed by the Treasury on the **Source Chain**.  
+- ✅ `MAX_SUPPLY` and `totalMinted` limits are globally enforced.  
+- ✅ Cross-chain bridges **cannot inflate supply**, since `_update()` validates issuance against the Treasury’s `totalMinted`.
+
 
 ---
 
