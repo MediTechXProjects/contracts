@@ -36,6 +36,7 @@ The token ensures secure, controlled, and predictable behavior across all suppor
 | **TREASURY_ROLE** | Token issuer (mint authority) | `mint()` |
 | **DEFAULT_USER** | Normal user | Regular transfers and burns |
 
+---
 
 ## 3️⃣ Supply Model and Mint Logic
 
@@ -51,6 +52,7 @@ The token ensures secure, controlled, and predictable behavior across all suppor
 - **Cross-chain safety:** The `_update()` function enforces that no chain can mint tokens beyond what was originally minted on the source chain.  
 - **Fixed-cap design:** Even with burns or bridge transfers, total token circulation across all chains remains ≤ `MAX_SUPPLY`.
 
+---
 
 # MTXToken `_update` Function
 
