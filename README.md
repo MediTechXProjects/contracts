@@ -54,7 +54,35 @@ The token ensures secure, controlled, and predictable behavior across all suppor
 
 ---
 
-# MTXToken `_update` Function
+## 4️⃣ Cross-Chain (OFT) Behavior
+
+**MTXToken** inherits from **LayerZero’s OFT (Omnichain Fungible Token)** standard, enabling seamless token transfers between EVM-compatible blockchains.
+
+### 🔗 Core Mechanics
+
+- **Burn on Source:**  
+  When a user sends tokens from Chain A → Chain B, the tokens are **burned** on Chain A.
+
+- **Mint on Destination:**  
+  The LayerZero OFT protocol triggers a **re-mint** of the same token amount on Chain B.
+
+- **Supply Enforcement:**  
+  The `_update()` function ensures that the **aggregate token supply across all chains** never exceeds the defined `MAX_SUPPLY`.
+
+- **Mint Path Limitation:**  
+  Only the Treasury can perform new minting operations.  
+  Cross-chain bridges (non-treasury mint paths) are **strictly limited by `totalMinted`**, ensuring no additional supply inflation occurs.
+
+### 🧠 Summary
+
+- ✅ **Cross-chain transfers are supply-neutral** — tokens burned on one chain are reissued on another.  
+- ✅ **`MAX_SUPPLY` is globally enforced** across all networks.  
+- ✅ **Bridges cannot inflate supply**, as `_update()` compares against `totalMinted` on the source chain.  
+- ⚙️ Fully compatible with the **LayerZero OFT** framework for interoperability and security.
+
+---
+
+# 5️⃣ _update Function Details (Critical Section)
 
 This section explains the `_update` function in the MTXToken contract, which is the **central point for all token transfers, minting, and burning**, including rate limiting, wallet limits, and whitelist/blacklist checks.
 
