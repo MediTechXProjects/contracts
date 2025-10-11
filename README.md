@@ -77,14 +77,6 @@ The token ensures secure, controlled, and predictable behavior across all suppor
 - **Mint Path Limitation:**  
   Cross-chain bridge operations (non-treasury mint paths) are **strictly limited by `totalMinted`**, ensuring that global supply cannot increase beyond what the Treasury has issued on the Source Chain.
 
-### 🧠 Summary
-
-- ✅ Tokens are **burned on the source chain** and **re-minted** on the destination chain (supply-neutral).  
-- ✅ **Actual minting** can **only** be performed by the Treasury on the **Source Chain**.  
-- ✅ `MAX_SUPPLY` and `totalMinted` limits are globally enforced.  
-- ✅ Cross-chain bridges **cannot inflate supply**, since `_update()` validates issuance against the Treasury’s `totalMinted`.
-
-
 ---
 
 # 5️⃣ _update Function Details (Critical Section)
