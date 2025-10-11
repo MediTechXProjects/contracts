@@ -1,3 +1,33 @@
+# 🧩 MTX Token — Audit Documentation
+
+## 1️⃣ Overview
+
+**MTXToken** is an ERC-20 compatible cross-chain token built on **LayerZero’s OFT (Omnichain Fungible Token)** standard.  
+It integrates advanced **security and anti-abuse mechanisms**, including:
+
+- **Maximum mint supply limit**
+- **Wallet holding caps**
+- **Transfer and rate limiting**
+- **Blacklist / Whitelist enforcement**
+- **Global pause control via AccessRestriction**
+
+The token ensures secure, controlled, and predictable behavior across all supported chains while maintaining compliance with LayerZero’s OFT interoperability framework.
+
+---
+
+## 🔗 Key Dependencies
+
+| Dependency | Source | Purpose |
+|-------------|---------|----------|
+| **ERC20Burnable** | OpenZeppelin | Enables token holders to burn their tokens |
+| **ERC20Permit** | OpenZeppelin | Allows gasless approvals (EIP-2612) |
+| **Ownable** | OpenZeppelin | Provides ownership management for administrative control |
+| **OFT** | LayerZero Labs | Enables omnichain token transfer between EVM-compatible networks |
+| **AccessRestriction** | Custom Contract | Manages roles, permissions, and global pause functionality |
+
+---
+
+
 # MTXToken `_update` Function
 
 This section explains the `_update` function in the MTXToken contract, which is the **central point for all token transfers, minting, and burning**, including rate limiting, wallet limits, and whitelist/blacklist checks.
