@@ -3,7 +3,7 @@
 ## 1️⃣ Overview
 
 **MTXToken** is an ERC-20 compatible cross-chain token built on **LayerZero’s OFT (Omnichain Fungible Token)** standard.  
-It integrates advanced **security and anti-abuse mechanisms**, including:
+It integrates **security and anti-abuse mechanisms**, including:
 
 - **Maximum mint supply limit**
 - **Wallet holding caps**
@@ -26,6 +26,15 @@ The token ensures secure, controlled, and predictable behavior across all suppor
 | **AccessRestriction** | Custom Contract | Manages roles, permissions, and global pause functionality |
 
 ---
+
+### 2️⃣ 🧩 Role Summary
+
+| Role | Description | Key Functions |
+|------|--------------|----------------|
+| **ADMIN_ROLE** | Global administrator | `setAccessRestriction()`, `disableRestrictions()` |
+| **MANAGER_ROLE** | Operational manager | `setTransferLimits()`, `setRateLimitingParams()`, `addToBlacklist()` |
+| **TREASURY_ROLE** | Token issuer (mint authority) | `mint()` |
+| **DEFAULT_USER** | Normal user | Regular transfers and burns |
 
 
 # MTXToken `_update` Function
