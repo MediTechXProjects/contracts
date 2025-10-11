@@ -18,7 +18,7 @@ contract SendOFT is Script {
         // Load environment variables
         address oappAddress = vm.envAddress("OAPP_ADDRESS");
         address toAddress = 0xe7A38d4d4D1ebc4e441f76a70AD7CE7a5D78531C;
-        uint256 tokensToSend = 50_000_000 * 10**18;
+        uint256 tokensToSend = 5_000_000 * 10**18;
         uint32 dstEid = uint32(vm.envUint("DST_EID"));
         uint256 privateKey = vm.envUint("PRIVATE_KEY");
 

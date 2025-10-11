@@ -8,30 +8,33 @@ import { OFT } from "@layerzerolabs/oft-evm/contracts/OFT.sol";
 
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
-import { IMTXToken } from "./IMTXToken.sol";
+import { IMTXOFT } from "./IMTXOFT.sol";
 import { AccessRestriction } from "../accessRistriction/AccessRestriction.sol";
 
+
 /**
- * @title MTXToken (Source Chain Deployment)
- * @notice This contract is deployed on the Source Network (BSC).
- * Only the Source deployment contains the `mint` function,
- * allowing the Treasury to mint new tokens up to the MAX_SUPPLY limit.
+ * @title MTXOFT (Destination Chain Deployment)
+ * @notice This contract is deployed on destination networks (non-source chains)
+ * within the LayerZero OFT ecosystem.
  *
- * Other chain deployments (destination chains) do not include the mint function
- * and only support cross-chain re-minting through the LayerZero OFT bridge.
+ * 🔸 Key Points:
+ * - This version does NOT include any mint() function.
+ * - Tokens on this contract are only re-minted via LayerZero bridge transfers
+ *   when burned from the source chain.
+ * - No new supply can be created here — total global supply is enforced
+ *   by the Source Chain contract which holds the mint authority.
+ *
+ * The Source Chain version (deployed on BSC) is the only one
+ * authorized to perform actual mint operations.
  */
-contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
+contract MTXOFT is OFT, ERC20Burnable, ERC20Permit, IMTXOFT {
 
     // Maximum supply of 1 billion tokens
     uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10**18;
 
     // Access restriction contract
     AccessRestriction public accessRestriction;
-    
-    // totalMinted never decreases to ensure MAX_SUPPLY tracking.
-    // Burned tokens are excluded from totalSupply() only.
-    uint256 public totalMinted;
-    
+
     // Transfer limits (based on 1 billion total supply)
     uint256 public maxWalletBalance = 100_000_000 * 10**18; // 10% of 1 billion (100 million tokens)
     uint256 public maxTransferAmount = 5_000_000 * 10**18;  // 0.5% of 1 billion (5 million tokens)
@@ -104,19 +107,6 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
     ) OFT("mtx-token","MTX", _lzEndpoint, _owner) Ownable(_owner) ERC20Permit("mtx-token") {
         accessRestriction = AccessRestriction(_accessRestriction);
     }
-
-    /**
-     * @notice Mint tokens to a specified address
-     * @param to The address to mint tokens to
-     * @param amount The amount of tokens to mint
-     */
-    function mint(address to, uint256 amount) external onlyTreasury {
-        if (totalMinted + amount > MAX_SUPPLY) revert MintingWouldExceedMaxSupply();
-
-        totalMinted += amount;
-        _mint(to, amount);
-    }
-
     
     /**
      * @notice Update the access restriction contract address
@@ -316,11 +306,8 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      */
     function _update(address from, address to, uint256 value) internal override {
 
-        if(from == address(0)) {
-            bool isTreasury = accessRestriction.hasRole(accessRestriction.TREASURY_ROLE(), _msgSender());
-            uint256 limit = isTreasury ? MAX_SUPPLY : totalMinted;
-            if (totalSupply() + value > limit) revert MintingWouldExceedMaxSupply();
-        }
+
+        if (totalSupply() + value > MAX_SUPPLY) revert MintingWouldExceedMaxSupply();
 
         if (restrictionsEnabled) {
 
