@@ -1,4 +1,4 @@
-# MTX Token — Audit Documentation
+# MTX Token — Documentation
 
 ## 1️⃣ Overview
 
