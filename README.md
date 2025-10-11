@@ -1,4 +1,4 @@
-# 🧩 MTX Token — Audit Documentation
+# MTX Token — Audit Documentation
 
 ## 1️⃣ Overview
 
@@ -27,7 +27,7 @@ The token ensures secure, controlled, and predictable behavior across all suppor
 
 ---
 
-### 2️⃣ 🧩 Role Summary
+### 2️⃣ Role Summary
 
 | Role | Description | Key Functions |
 |------|--------------|----------------|
@@ -35,6 +35,21 @@ The token ensures secure, controlled, and predictable behavior across all suppor
 | **MANAGER_ROLE** | Operational manager | `setTransferLimits()`, `setRateLimitingParams()`, `addToBlacklist()` |
 | **TREASURY_ROLE** | Token issuer (mint authority) | `mint()` |
 | **DEFAULT_USER** | Normal user | Regular transfers and burns |
+
+
+## 3️⃣ Supply Model and Mint Logic
+
+| **Parameter** | **Description** |
+|----------------|-----------------|
+| **MAX_SUPPLY** | `1,000,000,000 MTX` — fixed total supply cap defined at deployment. |
+| **totalMinted** | Tracks all tokens minted by the Treasury on the source chain. This value **never decreases**, even if tokens are burned or bridged. |
+| **mint()** | Callable **only by `TREASURY_ROLE`**. Used to issue new tokens up to `MAX_SUPPLY`. |
+| **_update()** | Central transfer hook (LayerZero OFT standard) that ensures **cross-chain minting** cannot exceed `totalMinted`. Prevents any destination chain from exceeding the source supply. 
+
+### 🔍 Summary
+- **Treasury-controlled minting:** All new token issuance occurs exclusively through the Treasury wallet.  
+- **Cross-chain safety:** The `_update()` function enforces that no chain can mint tokens beyond what was originally minted on the source chain.  
+- **Fixed-cap design:** Even with burns or bridge transfers, total token circulation across all chains remains ≤ `MAX_SUPPLY`.
 
 
 # MTXToken `_update` Function
