@@ -224,15 +224,6 @@ contract MTXTokenTest is Test {
         assertEq(address(token.accessRestriction()), address(accessRestriction));
     }
 
-    function testSetAccessRestrictionWithZeroAddress() public {
-        // Test that setting zero address is allowed (no validation in the function)
-        vm.startPrank(owner);
-        token.setAccessRestriction(address(0));
-        vm.stopPrank();
-        // Verify the access restriction was updated to zero address
-        assertEq(address(token.accessRestriction()), address(0));
-    }
-
     function testSetAccessRestrictionWithSameAddress() public {
         // Test setting the same access restriction address
         vm.prank(owner);
@@ -1440,12 +1431,12 @@ contract MTXTokenTest is Test {
 
     function testSetRateLimitingParamsWithZeroValues() public {
         vm.prank(manager);
-        token.setRateLimitingParams(0, 0, 0, 0, 100_000_000 * 10**18);
+        token.setRateLimitingParams(1, 1, 1, 1, 100_000_000 * 10**18);
         
-        assertEq(token.maxTxsPerWindow(), 0);
-        assertEq(token.windowSize(), 0);
-        assertEq(token.minTxInterval(), 0);
-        assertEq(token.maxTxsPerBlock(), 0);
+        assertEq(token.maxTxsPerWindow(), 1);
+        assertEq(token.windowSize(), 1);
+        assertEq(token.minTxInterval(), 1);
+        assertEq(token.maxTxsPerBlock(), 1);
     }
 
     // ============ MAX SUPPLY / MINTING TESTS ============
@@ -1695,6 +1686,95 @@ contract MTXTokenTest is Test {
         vm.prank(treasury);
         vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
         h.harnessMint(recipient, 1);
+    }
+
+    // ============ CONSTRUCTOR VALIDATION TESTS ============
+
+    function testConstructorRevertsWithInvalidAccessRestriction() public {
+        MockLayerZeroEndpointV2 lz = new MockLayerZeroEndpointV2();
+        
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.InvalidAccessRestrictionAddress.selector));
+        new MTXToken(address(lz), owner, address(0));
+    }
+
+    function testConstructorRevertsWithInvalidOwner() public {
+        MockLayerZeroEndpointV2 lz = new MockLayerZeroEndpointV2();
+        
+        // OpenZeppelin Ownable reverts before our validation with OwnableInvalidOwner(address(0))
+        vm.expectRevert();
+        new MTXToken(address(lz), address(0), address(accessRestriction));
+    }
+
+    function testConstructorRevertsWithInvalidLayerZeroEndpoint() public {
+        // OFT constructor reverts before our validation runs (no data in error)
+        vm.expectRevert();
+        new MTXToken(address(0), owner, address(accessRestriction));
+    }
+
+    // ============ SETACCESSRESTRICTION VALIDATION TESTS ============
+
+    function testSetAccessRestrictionRevertsWithZeroAddress() public {
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.InvalidAccessRestrictionAddress.selector));
+        token.setAccessRestriction(address(0));
+    }
+
+    // ============ BLACKLIST/WHTIELIST VALIDATION TESTS ============
+
+    function testAddToBlacklistRevertsWithZeroAddress() public {
+        vm.prank(manager);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.InvalidAccountAddress.selector));
+        token.addToBlacklist(address(0));
+    }
+
+    function testRemoveFromBlacklistRevertsWithZeroAddress() public {
+        vm.prank(manager);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.InvalidAccountAddress.selector));
+        token.removeFromBlacklist(address(0));
+    }
+
+    function testAddToWhitelistRevertsWithZeroAddress() public {
+        vm.prank(manager);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.InvalidAccountAddress.selector));
+        token.addToWhitelist(address(0));
+    }
+
+    function testRemoveFromWhitelistRevertsWithZeroAddress() public {
+        vm.prank(manager);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.InvalidAccountAddress.selector));
+        token.removeFromWhitelist(address(0));
+    }
+
+    // ============ SETRATELIMITINGPARAMS VALIDATION TESTS ============
+
+    function testSetRateLimitingParamsRevertsWithZeroMaxTxsPerWindow() public {
+        vm.prank(manager);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MaxTxsPerWindowMustBeGreaterThan0.selector));
+        token.setRateLimitingParams(0, 15 minutes, 1 minutes, 1, 100_000_000 * 10**18);
+    }
+
+    function testSetRateLimitingParamsRevertsWithZeroWindowSize() public {
+        vm.prank(manager);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.WindowSizeMustBeGreaterThan0.selector));
+        token.setRateLimitingParams(3, 0, 1 minutes, 1, 100_000_000 * 10**18);
+    }
+
+    function testSetRateLimitingParamsRevertsWithZeroMinTxInterval() public {
+        vm.prank(manager);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MinTxIntervalMustBeGreaterThan0.selector));
+        token.setRateLimitingParams(3, 15 minutes, 0, 1, 100_000_000 * 10**18);
+    }
+
+    function testSetRateLimitingParamsRevertsWithZeroMaxTxsPerBlock() public {
+        vm.prank(manager);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MaxTxsPerBlockMustBeGreaterThan0.selector));
+        token.setRateLimitingParams(3, 15 minutes, 1 minutes, 0, 100_000_000 * 10**18);
+    }
+
+    function testSetRateLimitingParamsRevertsWithZeroMaxAmountPerWindow() public {
+        vm.prank(manager);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MaxAmountPerWindowMustBeGreaterThan0.selector));
+        token.setRateLimitingParams(3, 15 minutes, 1 minutes, 1, 0);
     }
 }
 

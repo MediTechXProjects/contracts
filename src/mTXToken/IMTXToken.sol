@@ -28,6 +28,16 @@ interface IMTXToken is IERC20 {
     error TransferAmountExceedsMaximumAllowed();
     error Paused();
 
+    error InvalidAccessRestrictionAddress();
+    error InvalidOwnerAddress();
+    error InvalidLayerZeroEndpointAddress();
+    error InvalidAccountAddress();
+    error MaxTxsPerWindowMustBeGreaterThan0();
+    error WindowSizeMustBeGreaterThan0();
+    error MinTxIntervalMustBeGreaterThan0();
+    error MaxTxsPerBlockMustBeGreaterThan0();
+    error MaxAmountPerWindowMustBeGreaterThan0();
+
     
     event Blacklisted(address indexed account, bool isBlacklisted);
     event Whitelisted(address indexed account, bool isWhitelisted);

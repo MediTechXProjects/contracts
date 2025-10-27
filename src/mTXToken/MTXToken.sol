@@ -102,6 +102,11 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
         address _owner,
         address _accessRestriction
     ) OFT("mtx-token","MTX", _lzEndpoint, _owner) Ownable(_owner) ERC20Permit("mtx-token") {
+
+        if (_accessRestriction == address(0)) revert InvalidAccessRestrictionAddress();
+        if (_owner == address(0)) revert InvalidOwnerAddress();
+        if (_lzEndpoint == address(0)) revert InvalidLayerZeroEndpointAddress();
+
         accessRestriction = AccessRestriction(_accessRestriction);
     }
 
@@ -124,6 +129,9 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      * @dev Only callable by manager role
      */
     function setAccessRestriction(address _accessRestriction) external onlyAdmin {
+        
+        if (_accessRestriction == address(0)) revert InvalidAccessRestrictionAddress();
+
         emit AccessRestrictionUpdated(address(accessRestriction), _accessRestriction);
         accessRestriction = AccessRestriction(_accessRestriction);
     }
@@ -134,6 +142,9 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      * @param account The address to blacklist
      */
     function addToBlacklist(address account) external override onlyManager {
+
+        if (account == address(0)) revert InvalidAccountAddress();
+
         blacklisted[account] = true;
         emit Blacklisted(account, true);
     }
@@ -143,6 +154,9 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      * @param account The address to remove from blacklist
      */
     function removeFromBlacklist(address account) external override onlyManager {
+        
+        if (account == address(0)) revert InvalidAccountAddress();
+
         blacklisted[account] = false;
         emit Blacklisted(account, false);
     }
@@ -152,6 +166,9 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      * @param account The address to whitelist
      */
     function addToWhitelist(address account) external override onlyManager {
+        
+        if (account == address(0)) revert InvalidAccountAddress();
+
         whitelisted[account] = true;
         emit Whitelisted(account, true);
     }
@@ -161,6 +178,9 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      * @param account The address to remove from whitelist
      */
     function removeFromWhitelist(address account) external override onlyManager {
+
+        if (account == address(0)) revert InvalidAccountAddress();
+
         whitelisted[account] = false;
         emit Whitelisted(account, false);
     }
@@ -244,7 +264,14 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
         uint32 _maxTxsPerBlock,
         uint256 _maxAmountPerWindow
     ) external onlyManager {
-        
+
+
+        if (_maxTxsPerWindow == 0) revert MaxTxsPerWindowMustBeGreaterThan0();
+        if (_windowSize == 0) revert WindowSizeMustBeGreaterThan0();
+        if (_minTxInterval == 0) revert MinTxIntervalMustBeGreaterThan0();
+        if (_maxTxsPerBlock == 0) revert MaxTxsPerBlockMustBeGreaterThan0();
+        if (_maxAmountPerWindow == 0) revert MaxAmountPerWindowMustBeGreaterThan0();
+
         maxTxsPerWindow = _maxTxsPerWindow;
         windowSize = _windowSize;
         minTxInterval = _minTxInterval;
