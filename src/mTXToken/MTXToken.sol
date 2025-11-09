@@ -10,6 +10,7 @@ import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 import { IMTXToken } from "./IMTXToken.sol";
 import { AccessRestriction } from "../accessRistriction/AccessRestriction.sol";
+import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title MTXToken (Source Chain Deployment)
@@ -20,7 +21,7 @@ import { AccessRestriction } from "../accessRistriction/AccessRestriction.sol";
  * Other chain deployments (destination chains) do not include the mint function
  * and only support cross-chain re-minting through the LayerZero OFT bridge.
  */
-contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
+contract MTXToken is OFT, ERC20Burnable, ERC20Permit, ReentrancyGuard, IMTXToken {
 
     // Maximum supply of 1 billion tokens
     uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10**18;
@@ -115,7 +116,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      * @param to The address to mint tokens to
      * @param amount The amount of tokens to mint
      */
-    function mint(address to, uint256 amount) external onlyTreasury {
+    function mint(address to, uint256 amount) external onlyTreasury nonReentrant {
         if (totalMinted + amount > MAX_SUPPLY) revert MintingWouldExceedMaxSupply();
 
         totalMinted += amount;
@@ -191,6 +192,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      */
     function setCheckTxInterval(bool enabled) external onlyManager {
         checkTxInterval = enabled;
+        emit CheckTxIntervalUpdated(enabled);
     }
 
     /**
@@ -199,6 +201,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      */
     function setCheckBlockTxLimit(bool enabled) external onlyManager {
         checkBlockTxLimit = enabled;
+        emit CheckBlockTxLimitUpdated(enabled);
     }
 
     /**
@@ -207,6 +210,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      */
     function setCheckWindowTxLimit(bool enabled) external onlyManager {
         checkWindowTxLimit = enabled;
+        emit CheckWindowTxLimitUpdated(enabled);
     }
 
 
@@ -216,6 +220,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      */
     function setCheckBlackList(bool enabled) external onlyManager {
         checkBlackList = enabled;
+        emit CheckBlackListUpdated(enabled);
     }
 
     /**
@@ -224,6 +229,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      */
     function setCheckMaxTransfer(bool enabled) external onlyManager {
         checkMaxTransfer = enabled;
+        emit CheckMaxTransferUpdated(enabled);
     }
 
     /**
@@ -232,6 +238,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
      */
     function setCheckMaxWalletBalance(bool enabled) external onlyManager {
         checkMaxWalletBalance = enabled;
+        emit CheckMaxWalletBalanceUpdated(enabled);
     }
 
     /**
@@ -344,9 +351,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
     function _update(address from, address to, uint256 value) internal override {
 
         if(from == address(0)) {
-            bool isTreasury = accessRestriction.hasRole(accessRestriction.TREASURY_ROLE(), _msgSender());
-            uint256 limit = isTreasury ? MAX_SUPPLY : totalMinted;
-            if (totalSupply() + value > limit) revert MintingWouldExceedMaxSupply();
+            if (totalSupply() + value > MAX_SUPPLY) revert MintingWouldExceedMaxSupply();
         }
 
         if (restrictionsEnabled) {

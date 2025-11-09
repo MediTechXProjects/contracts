@@ -323,11 +323,15 @@ contract MTXTokenTest is Test {
     function testSetCheckTxInterval() public {
         // Test enabling
         vm.prank(manager);
+        vm.expectEmit(true, false, false, true);
+        emit IMTXToken.CheckTxIntervalUpdated(false);
         token.setCheckTxInterval(false);
         assertFalse(token.checkTxInterval());
         
         // Test disabling
         vm.prank(manager);
+        vm.expectEmit(true, false, false, true);
+        emit IMTXToken.CheckTxIntervalUpdated(true);
         token.setCheckTxInterval(true);
         assertTrue(token.checkTxInterval());
 
@@ -496,11 +500,15 @@ contract MTXTokenTest is Test {
     function testSetCheckWindowTxLimit() public {
         // Test enabling
         vm.prank(manager);
+        vm.expectEmit(true, false, false, true);
+        emit IMTXToken.CheckWindowTxLimitUpdated(false);
         token.setCheckWindowTxLimit(false);
         assertFalse(token.checkWindowTxLimit());
         
         // Test disabling
         vm.prank(manager);
+        vm.expectEmit(true, false, false, true);
+        emit IMTXToken.CheckWindowTxLimitUpdated(true);
         token.setCheckWindowTxLimit(true);
         assertTrue(token.checkWindowTxLimit());
 
@@ -516,11 +524,15 @@ contract MTXTokenTest is Test {
     function testSetCheckBlackList() public {
         // Test enabling
         vm.prank(manager);
+        vm.expectEmit(true, false, false, true);
+        emit IMTXToken.CheckBlackListUpdated(false);
         token.setCheckBlackList(false);
         assertFalse(token.checkBlackList());
         
         // Test disabling
         vm.prank(manager);
+        vm.expectEmit(true, false, false, true);
+        emit IMTXToken.CheckBlackListUpdated(true);
         token.setCheckBlackList(true);
         assertTrue(token.checkBlackList());
 
@@ -536,11 +548,15 @@ contract MTXTokenTest is Test {
     function testSetCheckMaxTransfer() public {
         // Test enabling
         vm.prank(manager);
+        vm.expectEmit(true, false, false, true);
+        emit IMTXToken.CheckMaxTransferUpdated(false);
         token.setCheckMaxTransfer(false);
         assertFalse(token.checkMaxTransfer());
         
         // Test disabling
         vm.prank(manager);
+        vm.expectEmit(true, false, false, true);
+        emit IMTXToken.CheckMaxTransferUpdated(true);
         token.setCheckMaxTransfer(true);
         assertTrue(token.checkMaxTransfer());
 
@@ -556,11 +572,15 @@ contract MTXTokenTest is Test {
     function testSetCheckMaxWalletBalance() public {
         // Test enabling
         vm.prank(manager);
+        vm.expectEmit(true, false, false, true);
+        emit IMTXToken.CheckMaxWalletBalanceUpdated(false);
         token.setCheckMaxWalletBalance(false);
         assertFalse(token.checkMaxWalletBalance());
         
         // Test disabling
         vm.prank(manager);
+        vm.expectEmit(true, false, false, true);
+        emit IMTXToken.CheckMaxWalletBalanceUpdated(true);
         token.setCheckMaxWalletBalance(true);
         assertTrue(token.checkMaxWalletBalance());
 
@@ -1662,7 +1682,7 @@ contract MTXTokenTest is Test {
         vm.startPrank(recipient);
 
         vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
-        h.harnessMint(recipient, 1);
+        h.harnessMint(recipient, 950_000_001 * 10**18);
         
         vm.stopPrank();
     }

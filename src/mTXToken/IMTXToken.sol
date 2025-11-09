@@ -46,6 +46,13 @@ interface IMTXToken is IERC20 {
     event RateLimitingParamsUpdated(uint32 maxTxsPerWindow, uint64 windowSize, uint64 minTxInterval, uint32 maxTxsPerBlock, uint256 maxAmountPerWindow);
     event AccessRestrictionUpdated(address oldContract, address newContract);
     
+    event CheckTxIntervalUpdated(bool enabled);
+    event CheckBlockTxLimitUpdated(bool enabled);
+    event CheckWindowTxLimitUpdated(bool enabled);
+    event CheckBlackListUpdated(bool enabled);
+    event CheckMaxTransferUpdated(bool enabled);
+    event CheckMaxWalletBalanceUpdated(bool enabled);
+    
     function blacklisted(address account) external view returns (bool);
     function whitelisted(address account) external view returns (bool);
     
