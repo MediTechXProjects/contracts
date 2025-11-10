@@ -80,6 +80,15 @@ The token ensures secure, controlled, and predictable behavior across all suppor
 - **Mint Path Limitation:**  
   All mint operations (Treasury mints and bridge re-issuances) are **strictly limited by `MAX_SUPPLY - totalBurned`**, ensuring that burned tokens cannot be re-minted and maintaining supply integrity across all chains.
 
+### 🔥 Burn & Mint Mechanics
+
+| Action                           | `totalMinted` | `totalBurned` | Effective MAX_SUPPLY (`MAX_SUPPLY - totalBurned`) | Notes                                                               |
+| -------------------------------- | ------------- | ------------- | ------------------------------------------------- | ------------------------------------------------------------------- |
+| Treasury mint                    | ↑             | -             | MAX_SUPPLY - totalBurned                          | Minting new tokens on source chain only, limited by MAX_SUPPLY      |
+| Local burn (`burn` / `burnFrom`) | -             | ↑             | MAX_SUPPLY - totalBurned                          | Reduces effective supply, tokens cannot be re-minted                |
+| Bridge burn (Chain A → B)        | -             | -             | MAX_SUPPLY - totalBurned                          | Tokens burned on source, re-minted on destination, supply unchanged |
+| Bridge re-mint (Chain B)         | -             | -             | MAX_SUPPLY - totalBurned                          | Reissues existing supply on destination chain only                  |
+
 ---
 
 # 5️⃣ \_update Function Details (Critical Section)
