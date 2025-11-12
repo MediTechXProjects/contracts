@@ -19,8 +19,6 @@ contract GrantRole is Script {
 
         // Grant roles - uncomment the role you want to grant
         // accessRestriction.grantRole(accessRestriction.ADMIN_ROLE(), userAddress);
-        // accessRestriction.grantRole(accessRestriction.TREASURY_ROLE(), userAddress);
-        accessRestriction.grantRole(accessRestriction.MANAGER_ROLE(), userAddress);
         // accessRestriction.grantRole(accessRestriction.MTX_CONTRACT_ROLE(), userAddress);
 
         vm.stopBroadcast();

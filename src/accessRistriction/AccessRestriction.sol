@@ -23,7 +23,6 @@ contract AccessRestriction is
     // Define roles
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
-    bytes32 public constant TREASURY_ROLE = keccak256("TREASURY_ROLE");
     bytes32 public constant MTX_CONTRACT_ROLE = keccak256("MTX_CONTRACT_ROLE");
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -32,14 +31,13 @@ contract AccessRestriction is
     }
 
     /// @notice Initializer replaces constructor for upgradeable contracts
-    function initialize(address _admin, address _treasury) public initializer {
+    function initialize(address _admin) public initializer {
         __AccessControl_init();
         __Pausable_init();
         __UUPSUpgradeable_init();
 
         _grantRole(DEFAULT_ADMIN_ROLE, _admin);
         _grantRole(ADMIN_ROLE, _admin);
-        _grantRole(TREASURY_ROLE, _treasury);
     }
 
     /// @notice Modifier to restrict access to admin role

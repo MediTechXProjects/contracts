@@ -52,6 +52,7 @@ interface IMTXToken is IERC20 {
     event CheckBlackListUpdated(bool enabled);
     event CheckMaxTransferUpdated(bool enabled);
     event CheckMaxWalletBalanceUpdated(bool enabled);
+    error InvalidTreasuryAddress();
     
     function blacklisted(address account) external view returns (bool);
     function whitelisted(address account) external view returns (bool);
@@ -62,9 +63,7 @@ interface IMTXToken is IERC20 {
     function removeFromWhitelist(address account) external;
     
     function disableRestrictions() external;
-    
-    function mint(address to, uint256 amount) external;
-    
+        
     function setTransferLimits(uint256 _maxWalletBalance, uint256 _maxTransferAmount) external;
     function setRateLimitingParams(uint32 _maxTxsPerWindow, uint64 _windowSize, uint64 _minTxInterval, uint32 _maxTxsPerBlock, uint256 _maxAmountPerWindow) external;
 }

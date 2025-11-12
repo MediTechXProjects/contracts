@@ -92,14 +92,6 @@ contract MTXOFT is OFT, ERC20Burnable, ERC20Permit, IMTXOFT {
         _;
     }
 
-    /**
-     * @notice Modifier to restrict access to treasury role
-     */
-    modifier onlyTreasury() {
-        if (!accessRestriction.hasRole(accessRestriction.TREASURY_ROLE(), _msgSender())) revert CallerNotTreasury();
-        _;
-    }
-
     constructor(
         address _lzEndpoint,
         address _owner,

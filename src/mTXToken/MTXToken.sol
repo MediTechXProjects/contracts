@@ -10,34 +10,20 @@
 
     import { IMTXToken } from "./IMTXToken.sol";
     import { AccessRestriction } from "../accessRistriction/AccessRestriction.sol";
-    import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
     /**
-     * @title MTXToken (Source Chain Deployment)
-     * @notice This contract is deployed on the Source Network (BSC).
-     * Only the Source deployment contains the `mint` function,
-     * allowing the Treasury to mint new tokens up to the MAX_SUPPLY limit.
-     *
-     * Other chain deployments (destination chains) do not include the mint function
-     * and only support cross-chain re-minting through the LayerZero OFT bridge.
+     * @title MTXToken Base Contract
+     * @notice MTXToken is an OFT-compliant ERC20 token with permit and burn functionality, and role-based access control.
+     * Minting is only enabled in the constructor on the BSC network and is disabled on other networks.
+     * Cross-chain mint and burn is supported via LayerZero OFT bridge.
      */
-    contract MTXToken is OFT, ERC20Burnable, ERC20Permit, ReentrancyGuard, IMTXToken {
+    contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
 
         // Maximum supply of 1 billion tokens
         uint256 public constant MAX_SUPPLY = 1_000_000_000 * 10**18;
 
         // Access restriction contract
         AccessRestriction public accessRestriction;
-
-        // Tracks the total amount of tokens that have been burned locally via burn() or burnFrom().
-        // This value is used to ensure that burned tokens cannot be re-minted again,
-        // effectively reducing the remaining mintable supply to (MAX_SUPPLY - totalBurned).
-        // Note: Does NOT include tokens burned through the OFT bridge mechanism on other chains.
-        uint256 public totalBurned;
-
-        // Tracks the total amount of tokens that have been minted locally via mint().
-        uint256 public totalMinted;
-
         
         // Transfer limits (based on 1 billion total supply)
         uint256 public maxWalletBalance = 100_000_000 * 10**18; // 10% of 1 billion (100 million tokens)
@@ -96,49 +82,21 @@
             _;
         }
 
-        /**
-         * @notice Modifier to restrict access to treasury role
-         */
-        modifier onlyTreasury() {
-            if (!accessRestriction.hasRole(accessRestriction.TREASURY_ROLE(), _msgSender())) revert CallerNotTreasury();
-            _;
-        }
-
         constructor(
             address _lzEndpoint,
             address _owner,
-            address _accessRestriction
+            address _accessRestriction,
+            address _treasury
         ) OFT("mtx-token","MTX", _lzEndpoint, _owner) Ownable(_owner) ERC20Permit("mtx-token") {
 
             if (_accessRestriction == address(0)) revert InvalidAccessRestrictionAddress();
             if (_owner == address(0)) revert InvalidOwnerAddress();
             if (_lzEndpoint == address(0)) revert InvalidLayerZeroEndpointAddress();
+            if (_treasury == address(0)) revert InvalidTreasuryAddress();
 
             accessRestriction = AccessRestriction(_accessRestriction);
-        }
 
-        /**
-         * @notice Mint tokens to a specified address
-         * @param to The address to mint tokens to
-         * @param amount The amount of tokens to mint
-         */
-        function mint(address to, uint256 amount) external onlyTreasury nonReentrant {
-            if (totalMinted + amount > MAX_SUPPLY) revert MintingWouldExceedMaxSupply();
-
-            _mint(to, amount);
-            
-            totalMinted += amount;
-        }
-
-
-        function burn(uint256 value) public override nonReentrant {   
-            super.burn(value);
-            totalBurned += value;
-        }
-
-        function burnFrom(address account, uint256 value) public override nonReentrant {
-            super.burnFrom(account, value);
-            totalBurned += value;
+            _mint(_treasury, MAX_SUPPLY);
         }
 
         /**
@@ -367,13 +325,8 @@
          */
         function _update(address from, address to, uint256 value) internal override {
 
-            if(from == address(0)) {
-                if (totalSupply() + value > MAX_SUPPLY - totalBurned) revert MintingWouldExceedMaxSupply();
-            }
-
             if (restrictionsEnabled) {
 
-                // Check if contract is paused
                 if (accessRestriction.paused()) revert Paused();
 
                 if(checkBlackList){

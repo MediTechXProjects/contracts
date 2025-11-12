@@ -1,23 +1,14 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.22;
 
-import {Test} from "forge-std/Test.sol";
+import {Test,console} from "forge-std/Test.sol";
 import {MTXToken} from "../src/mTXToken/MTXToken.sol";
 import {AccessRestriction} from "../src/accessRistriction/AccessRestriction.sol";
 import {MockLayerZeroEndpointV2} from "../src/mock/MockLayerZeroEndpointV2.sol";
 import {IMTXToken} from "../src/mTXToken/IMTXToken.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
-// Harness to expose internal _mint (which triggers _update with from == address(0))
-contract MTXTokenHarness is MTXToken {
-    constructor(address _lzEndpoint, address _owner, address _accessRestriction)
-        MTXToken(_lzEndpoint, _owner, _accessRestriction)
-    {}
 
-    function harnessMint(address to, uint256 amount) external {
-        _mint(to, amount);
-    }
-}
 
 contract MTXTokenTest is Test {
     MTXToken public token;
@@ -38,10 +29,7 @@ contract MTXTokenTest is Test {
 
         AccessRestriction logic= new AccessRestriction();
         bytes memory data = abi.encodeWithSelector(
-            AccessRestriction.initialize.selector,
-            owner,
-            treasury
-        );
+            AccessRestriction.initialize.selector,owner);
         address proxy = address(
             new ERC1967Proxy(address(logic), data)
         );
@@ -49,17 +37,18 @@ contract MTXTokenTest is Test {
 
         MockLayerZeroEndpointV2 lzEndpoint = new MockLayerZeroEndpointV2();
         
-        // Grant manager role (treasury role is granted in constructor)
         accessRestriction.grantRole(accessRestriction.MANAGER_ROLE(), manager);
-        
-        // Deploy MTXToken with try-catch to get error message
+
         token = new MTXToken(
             address(lzEndpoint),
             owner,
-            address(accessRestriction)
+            address(accessRestriction),
+            treasury
         );
-
         vm.stopPrank();
+
+        vm.prank(manager);
+        token.addToWhitelist(treasury);
 
         vm.warp(block.timestamp + 100 minutes);
     }
@@ -70,7 +59,8 @@ contract MTXTokenTest is Test {
         assertEq(token.name(), "mtx-token");
         assertEq(token.symbol(), "MTX");
         assertEq(token.decimals(), 18);
-        assertEq(token.totalSupply(), 0);
+        assertEq(token.totalSupply(), 1_000_000_000 * 10**18);
+        assertEq(token.balanceOf(treasury), 1_000_000_000 * 10**18);
 
 
         // Test initial configuration
@@ -306,12 +296,7 @@ contract MTXTokenTest is Test {
         vm.startPrank(owner);
         token.setAccessRestriction(newAccessRestrictionProxy);
         vm.stopPrank();
-        
-        // Mint some tokens first using the new treasury
-        vm.prank(newTreasury);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.Paused.selector));
-        token.mint(owner, 1000 * 10**18);
-        
+
         // Test that transfers are blocked when the new access restriction is paused
         vm.prank(owner);
         vm.expectRevert(abi.encodeWithSelector(IMTXToken.Paused.selector));
@@ -349,7 +334,7 @@ contract MTXTokenTest is Test {
         
         // Mint some tokens to user for testing
         vm.prank(treasury);
-        token.mint(user, 1000 * 10**18);
+        token.transfer(user, 1000 * 10**18);
         
         // Ensure checkTxInterval is enabled
         vm.prank(manager);
@@ -402,7 +387,7 @@ contract MTXTokenTest is Test {
         
         // Mint some tokens to user for testing
         vm.prank(treasury);
-        token.mint(user, 1000 * 10**18);
+        token.transfer(user, 1000 * 10**18);
         
         // Disable checkTxInterval
         vm.prank(manager);
@@ -438,7 +423,7 @@ contract MTXTokenTest is Test {
         
         // Mint some tokens to user for testing
         vm.prank(treasury);
-        token.mint(user, 1000 * 10**18);
+        token.transfer(user, 1000 * 10**18);
         
         // Set interval to 30 seconds
         vm.prank(manager);
@@ -594,10 +579,16 @@ contract MTXTokenTest is Test {
     function testMaxWalletBalanceEnforcement() public {
         address sender = makeAddr("sender");
         address recipient = makeAddr("recipient");
+
+        vm.prank(manager);
+        token.addToWhitelist(sender);
         
         // Mint tokens to sender for testing
         vm.prank(treasury);
-        token.mint(sender, 150_000_000 * 10**18); // 150 million tokens
+        token.transfer(sender, 150_000_000 * 10**18); // 150 million tokens
+
+        vm.prank(manager);
+        token.removeFromWhitelist(sender);
         
         // Ensure maxWalletBalance check is enabled
         vm.prank(manager);
@@ -629,10 +620,13 @@ contract MTXTokenTest is Test {
     function testMaxWalletBalanceDisabled() public {
         address sender = makeAddr("sender");
         address recipient = makeAddr("recipient");
+
+        vm.prank(manager);
+        token.addToWhitelist(sender);
         
         // Mint tokens to sender for testing
         vm.prank(treasury);
-        token.mint(sender, 150_000_000 * 10**18);
+        token.transfer(sender, 150_000_000 * 10**18);
         
         // First, try to send 120 million tokens with wallet limit enabled - should fail
         vm.prank(manager);
@@ -679,10 +673,13 @@ contract MTXTokenTest is Test {
         address sender = makeAddr("sender");
         address whitelistedRecipient = makeAddr("whitelistedRecipient");
         address regularRecipient = makeAddr("regularRecipient");
+
+        vm.prank(manager);
+        token.addToWhitelist(sender);
         
         // Mint tokens to sender
         vm.prank(treasury);
-        token.mint(sender, 150_000_000 * 10**18);
+        token.transfer(sender, 150_000_000 * 10**18);
         
         // Add whitelistedRecipient to whitelist
         vm.prank(manager);
@@ -727,7 +724,7 @@ contract MTXTokenTest is Test {
         
         // Mint tokens to user for testing
         vm.prank(treasury);
-        token.mint(user, 10_000_000 * 10**18);
+        token.transfer(user, 10_000_000 * 10**18);
         
         // Ensure blockTxLimit check is enabled
         vm.prank(manager);
@@ -769,7 +766,7 @@ contract MTXTokenTest is Test {
         
         // Mint tokens to user for testing
         vm.prank(treasury);
-        token.mint(user, 10_000_000 * 10**18);
+        token.transfer(user, 10_000_000 * 10**18);
         
         // First, try with block limit enabled - should fail after 2 transactions
         vm.prank(manager);
@@ -824,9 +821,9 @@ contract MTXTokenTest is Test {
         
         // Mint tokens to both users
         vm.prank(treasury);
-        token.mint(user, 10_000_000 * 10**18);
+        token.transfer(user, 10_000_000 * 10**18);
         vm.prank(treasury);
-        token.mint(whitelistedUser, 10_000_000 * 10**18);
+        token.transfer(whitelistedUser, 10_000_000 * 10**18);
         
         // Add whitelistedUser to whitelist
         vm.prank(manager);
@@ -878,7 +875,7 @@ contract MTXTokenTest is Test {
         
         // Mint tokens to user for testing
         vm.prank(treasury);
-        token.mint(user, 10_000_000 * 10**18);
+        token.transfer(user, 10_000_000 * 10**18);
         
         // Ensure windowTxLimit check is enabled
         vm.prank(manager);
@@ -934,7 +931,7 @@ contract MTXTokenTest is Test {
         
         // Mint tokens to user for testing
         vm.prank(treasury);
-        token.mint(user, 10_000_000 * 10**18);
+        token.transfer(user, 10_000_000 * 10**18);
         
         // First, try with window limit enabled - should fail after 3 transactions
         vm.prank(manager);
@@ -994,9 +991,9 @@ contract MTXTokenTest is Test {
         
         // Mint tokens to both users
         vm.prank(treasury);
-        token.mint(user, 10_000_000 * 10**18);
+        token.transfer(user, 10_000_000 * 10**18);
         vm.prank(treasury);
-        token.mint(whitelistedUser, 10_000_000 * 10**18);
+        token.transfer(whitelistedUser, 10_000_000 * 10**18);
         
         // Add whitelistedUser to whitelist
         vm.prank(manager);
@@ -1055,10 +1052,16 @@ contract MTXTokenTest is Test {
         address recipient1 = makeAddr("recipient1");
         address recipient2 = makeAddr("recipient2");
         address recipient3 = makeAddr("recipient3");
-        
+
+
+        vm.prank(manager);
+        token.addToWhitelist(user);
         // Mint tokens to user for testing
         vm.prank(treasury);
-        token.mint(user, 200_000_000 * 10**18); // 200 million tokens
+        token.transfer(user, 200_000_000 * 10**18); // 200 million tokens
+
+        vm.prank(manager);
+        token.removeFromWhitelist(user);
         
         // Ensure windowTxLimit check is enabled
         vm.prank(manager);
@@ -1101,13 +1104,22 @@ contract MTXTokenTest is Test {
 
     function testWindowTransferAmountLimitDisabled() public {
         address user = makeAddr("user");
+
+    
+
         address recipient1 = makeAddr("recipient1");
         address recipient2 = makeAddr("recipient2");
         address recipient3 = makeAddr("recipient3");
+
+        vm.prank(manager);
+        token.addToWhitelist(user);
         
         // Mint tokens to user for testing
         vm.prank(treasury);
-        token.mint(user, 200_000_000 * 10**18);
+        token.transfer(user, 200_000_000 * 10**18);
+
+        vm.prank(manager);
+        token.removeFromWhitelist(user);
         
         // First, try with window limit enabled - should fail when exceeding amount
         vm.prank(manager);
@@ -1160,12 +1172,24 @@ contract MTXTokenTest is Test {
         address recipient1 = makeAddr("recipient1");
         address recipient2 = makeAddr("recipient2");
         address recipient3 = makeAddr("recipient3");
+
+        vm.prank(manager);
+        token.addToWhitelist(user);
+        vm.prank(manager);
+        token.addToWhitelist(whitelistedUser);
         
         // Mint tokens to both users
         vm.prank(treasury);
-        token.mint(user, 200_000_000 * 10**18);
+        token.transfer(user, 200_000_000 * 10**18);
         vm.prank(treasury);
-        token.mint(whitelistedUser, 200_000_000 * 10**18);
+        token.transfer(whitelistedUser, 200_000_000 * 10**18);
+
+        vm.prank(manager);
+        token.removeFromWhitelist(user);
+        vm.prank(manager);
+        token.removeFromWhitelist(whitelistedUser);
+
+
         
         // Add whitelistedUser to whitelist
         vm.prank(manager);
@@ -1217,10 +1241,16 @@ contract MTXTokenTest is Test {
         address recipient1 = makeAddr("recipient1");
         address recipient2 = makeAddr("recipient2");
         address recipient3 = makeAddr("recipient3");
+
+        vm.prank(manager);
+        token.addToWhitelist(user);
         
         // Mint tokens to user for testing
         vm.prank(treasury);
-        token.mint(user, 200_000_000 * 10**18); // 200 million tokens
+        token.transfer(user, 200_000_000 * 10**18); // 200 million tokens
+
+        vm.prank(manager);
+        token.removeFromWhitelist(user);
         
         // Ensure windowTxLimit check is enabled
         vm.prank(manager);
@@ -1320,7 +1350,7 @@ contract MTXTokenTest is Test {
         
         // Mint tokens to user for testing
         vm.prank(treasury);
-        token.mint(user, 15_000_000 * 10**18); // 10 million tokens
+        token.transfer(user, 15_000_000 * 10**18); // 10 million tokens
         
         // Ensure maxTransfer check is enabled
         vm.prank(manager);
@@ -1349,7 +1379,7 @@ contract MTXTokenTest is Test {
         
         // Mint 25 million tokens to user for testing
         vm.prank(treasury);
-        token.mint(user, 25_000_000 * 10**18);
+        token.transfer(user, 25_000_000 * 10**18);
         
         // First, try to send 20 million tokens with limit enabled - should fail
         vm.prank(manager);
@@ -1397,9 +1427,9 @@ contract MTXTokenTest is Test {
         
         // Mint tokens to both users
         vm.prank(treasury);
-        token.mint(user, 10_000_000 * 10**18);
+        token.transfer(user, 10_000_000 * 10**18);
         vm.prank(treasury);
-        token.mint(whitelistedUser, 10_000_000 * 10**18);
+        token.transfer(whitelistedUser, 10_000_000 * 10**18);
         
         // Add whitelistedUser to whitelist
         vm.prank(manager);
@@ -1461,69 +1491,40 @@ contract MTXTokenTest is Test {
 
     // ============ MAX SUPPLY / MINTING TESTS ============
 
-    function testMintOnlyTreasury() public {
-        address recipient = makeAddr("recipient");
-        address notTreasury = makeAddr("notTreasury");
-
-        // Non-treasury cannot mint
-        vm.prank(notTreasury);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotTreasury.selector));
-        token.mint(recipient, 1);
-
-        // Treasury can mint
-        vm.prank(treasury);
-        token.mint(recipient, 1_000 * 10**18);
-        assertEq(token.totalSupply(), 1_000 * 10**18);
-        assertEq(token.balanceOf(recipient), 1_000 * 10**18);
-        assertEq(token.totalMinted(), 1_000 * 10**18);
-    }
-
     function testMintCannotExceedMaxSupply() public {
         address recipient = makeAddr("recipient");
         uint256 maxSupply = token.MAX_SUPPLY();
 
+        vm.prank(manager);
+        token.addToWhitelist(recipient);
+
         // Mint exactly up to max supply
         vm.prank(treasury);
-        token.mint(recipient, maxSupply);
+        token.transfer(recipient, maxSupply);
         assertEq(token.totalSupply(), maxSupply);
         assertEq(token.balanceOf(recipient), maxSupply);
-        assertEq(token.totalMinted(), maxSupply);
-
-        // Any additional mint should fail
-        vm.prank(treasury);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
-        token.mint(recipient, 1);
     }
 
     function testMintAfterBurnCannotExceedMaxSupply() public {
         address holder = makeAddr("holder");
+
+        vm.prank(manager);
+        token.addToWhitelist(holder);
+
         uint256 maxSupply = token.MAX_SUPPLY();
         uint256 twoHundredMillion = 200_000_000 * 10**18;
 
         // Mint max supply to holder
         vm.prank(treasury);
-        token.mint(holder, maxSupply);
+        token.transfer(holder, maxSupply);
         assertEq(token.totalSupply(), maxSupply);
         assertEq(token.balanceOf(holder), maxSupply);
-        assertEq(token.totalMinted(), maxSupply);
-
-        // Cannot mint more while at cap
-        vm.prank(treasury);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
-        token.mint(holder, 1);
 
         // Burn 200M from holder
         vm.prank(holder);
         token.burn(twoHundredMillion);
         assertEq(token.totalSupply(), maxSupply - twoHundredMillion);
         assertEq(token.balanceOf(holder), maxSupply - twoHundredMillion);
-        // totalMinted should remain unchanged after burning
-        assertEq(token.totalMinted(), maxSupply);
-
-        // Now minting should still fail because totalMinted is still at max supply
-        vm.prank(treasury);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
-        token.mint(holder, twoHundredMillion);
     }
 
     function testTotalMintedTracking() public {
@@ -1533,29 +1534,34 @@ contract MTXTokenTest is Test {
         uint256 mintAmount2 = 200_000_000 * 10**18; // 200M tokens
         uint256 burnAmount = 50_000_000 * 10**18;   // 50M tokens
 
+
+        vm.prank(manager);
+        token.addToWhitelist(holder1);
+        vm.prank(manager);
+        token.addToWhitelist(holder2);
+
+
         // Initial state
-        assertEq(token.totalMinted(), 0);
-        assertEq(token.totalSupply(), 0);
+        assertEq(token.totalSupply(), token.MAX_SUPPLY());
 
         // First mint
         vm.prank(treasury);
-        token.mint(holder1, mintAmount1);
-        assertEq(token.totalMinted(), mintAmount1);
-        assertEq(token.totalSupply(), mintAmount1);
+        token.transfer(holder1, mintAmount1);
+        assertEq(token.totalSupply(), token.MAX_SUPPLY());
         assertEq(token.balanceOf(holder1), mintAmount1);
+        assertEq(token.balanceOf(treasury), token.MAX_SUPPLY()-mintAmount1);
 
         // Second mint
         vm.prank(treasury);
-        token.mint(holder2, mintAmount2);
-        assertEq(token.totalMinted(), mintAmount1 + mintAmount2);
-        assertEq(token.totalSupply(), mintAmount1 + mintAmount2);
+        token.transfer(holder2, mintAmount2);
+        assertEq(token.totalSupply(), token.MAX_SUPPLY());
         assertEq(token.balanceOf(holder2), mintAmount2);
+        assertEq(token.balanceOf(treasury), token.MAX_SUPPLY()-mintAmount1-mintAmount2);
 
         // Burn some tokens
         vm.prank(holder1);
         token.burn(burnAmount);
-        assertEq(token.totalMinted(), mintAmount1 + mintAmount2); // totalMinted unchanged
-        assertEq(token.totalSupply(), mintAmount1 + mintAmount2 - burnAmount); // totalSupply decreased
+        assertEq(token.totalSupply(), token.MAX_SUPPLY() - burnAmount);
         assertEq(token.balanceOf(holder1), mintAmount1 - burnAmount);
     }
 
@@ -1565,22 +1571,24 @@ contract MTXTokenTest is Test {
         uint256 maxSupply = token.MAX_SUPPLY();
         uint256 halfSupply = maxSupply / 2;
 
+        vm.prank(manager);
+        token.addToWhitelist(holder1);
+        vm.prank(manager);
+        token.addToWhitelist(holder2);
+
         // Mint half supply to first holder
         vm.prank(treasury);
-        token.mint(holder1, halfSupply);
-        assertEq(token.totalMinted(), halfSupply);
-        assertEq(token.totalSupply(), halfSupply);
+        token.transfer(holder1, halfSupply);
+        assertEq(token.totalSupply(), maxSupply);
 
         // Mint half supply to second holder
         vm.prank(treasury);
-        token.mint(holder2, halfSupply);
-        assertEq(token.totalMinted(), maxSupply);
+        token.transfer(holder2, halfSupply);
         assertEq(token.totalSupply(), maxSupply);
 
-        // Any additional mint should fail
-        vm.prank(treasury);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
-        token.mint(holder1, 1);
+        assertEq(token.balanceOf(holder1), halfSupply);
+        assertEq(token.balanceOf(holder2), halfSupply);
+        assertEq(token.balanceOf(treasury), 0);
     }
 
     function testMaxSupplyEnforcementWithBurning() public {
@@ -1588,125 +1596,20 @@ contract MTXTokenTest is Test {
         uint256 maxSupply = token.MAX_SUPPLY();
         uint256 burnAmount = 100_000_000 * 10**18; // 100M tokens
 
+        vm.prank(manager);
+        token.addToWhitelist(holder);
+
         // Mint max supply
         vm.prank(treasury);
-        token.mint(holder, maxSupply);
-        assertEq(token.totalMinted(), maxSupply);
+        token.transfer(holder, maxSupply);
         assertEq(token.totalSupply(), maxSupply);
 
         // Burn some tokens
         vm.prank(holder);
         token.burn(burnAmount);
-        assertEq(token.totalMinted(), maxSupply); // totalMinted unchanged
         assertEq(token.totalSupply(), maxSupply - burnAmount); // totalSupply decreased
-
-        // Cannot mint more even after burning because totalMinted is still at max
-        vm.prank(treasury);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
-        token.mint(holder, burnAmount);
     }
 
-    // ============ _update mint-cap check (from == address(0)) via harness ============
-
-    function testInternalMintUpToMaxSupply_UsesUpdateCheck() public {
-        // Deploy fresh harness token
-        MockLayerZeroEndpointV2 lz = new MockLayerZeroEndpointV2();
-        MTXTokenHarness h = new MTXTokenHarness(address(lz), owner, address(accessRestriction));
-
-        address recipient = makeAddr("recipient_update_cap");
-        uint256 maxSupply = h.MAX_SUPPLY();
-
-        // First mint some tokens via treasury to set totalMinted
-        vm.startPrank(treasury);
-        h.mint(recipient, 100_000_000 * 10**18); // 100M tokens
-        assertEq(h.totalMinted(), 100_000_000 * 10**18);
-
-        uint256 remainingMintable = h.totalMinted() - h.totalSupply();
-        assertTrue(remainingMintable == 0);
-
-        h.harnessMint(recipient, 100_000_000 * 10**18); // should succeed at totalMinted cap
-        assertEq(h.totalSupply(), 200_000_000 * 10**18);
-        assertEq(h.balanceOf(recipient), 200_000_000 * 10**18);
-        assertEq(h.totalMinted(), 100_000_000 * 10**18);
-
-        vm.stopPrank();
-    }
-
-
-    function checkTotalMinted() public {
-        // Deploy fresh harness token
-        MockLayerZeroEndpointV2 lz = new MockLayerZeroEndpointV2();
-        MTXTokenHarness h = new MTXTokenHarness(address(lz), owner, address(accessRestriction));
-
-        address recipient = makeAddr("recipient_update_cap");
-        uint256 maxSupply = h.MAX_SUPPLY();
-
-        // First mint some tokens via treasury to set totalMinted
-        vm.prank(treasury);
-        h.mint(recipient, 100_000_000 * 10**18); // 100M tokens
-        assertEq(h.totalMinted(), 100_000_000 * 10**18);
-        assertEq(h.totalSupply(), 100_000_000 * 10**18);
-        assertEq(h.balanceOf(recipient), 100_000_000 * 10**18);
-
-
-        vm.warp(block.timestamp + 15 minutes);
-        vm.prank(treasury);
-        h.mint(recipient, 900_000_000 * 10**18); // 100M tokens
-        assertEq(h.totalMinted(), 1_000_000_000 * 10**18);
-        assertEq(h.totalSupply(), 1_000_000_000 * 10**18);
-        assertEq(h.balanceOf(recipient), 1_000_000_000 * 10**18);
-    }
-
-
-
-    function testInternalMintBeyondMaxSupply_RevertsFromUpdate() public {
-        // Deploy fresh harness token
-        MockLayerZeroEndpointV2 lz = new MockLayerZeroEndpointV2();
-        MTXTokenHarness h = new MTXTokenHarness(address(lz), owner, address(accessRestriction));
-
-        address recipient = makeAddr("recipient_update_cap_revert");
-
-        vm.startPrank(treasury);
-        h.mint(recipient, 50_000_000 * 10**18); // 50M tokens
-        assertEq(h.totalMinted(), 50_000_000 * 10**18);
-        assertEq(h.totalSupply(), 50_000_000 * 10**18);
-        assertEq(h.balanceOf(recipient), 50_000_000 * 10**18);
-
-        h.harnessMint(recipient, h.totalMinted());
-        assertEq(h.totalSupply(), h.totalMinted() + 50_000_000 * 10**18);
-
-        vm.stopPrank();
-
-        vm.warp(block.timestamp + 15 minutes);
-
-        vm.startPrank(recipient);
-
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
-        h.harnessMint(recipient, 950_000_001 * 10**18);
-        
-        vm.stopPrank();
-    }
-
-    function testInternalMintWithTreasuryRole_UsesMaxSupplyCheck() public {
-        // Deploy fresh harness token
-        MockLayerZeroEndpointV2 lz = new MockLayerZeroEndpointV2();
-        MTXTokenHarness h = new MTXTokenHarness(address(lz), owner, address(accessRestriction));
-
-        address recipient = makeAddr("recipient_treasury_check");
-        uint256 maxSupply = h.MAX_SUPPLY();
-
-        // Test that treasury can mint up to MAX_SUPPLY via internal _mint
-        // This tests the treasury role path in _update
-        vm.prank(treasury);
-        h.harnessMint(recipient, maxSupply);
-        assertEq(h.totalSupply(), maxSupply);
-        assertEq(h.balanceOf(recipient), maxSupply);
-
-        // Any further mint by treasury should also revert
-        vm.prank(treasury);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
-        h.harnessMint(recipient, 1);
-    }
 
     // ============ CONSTRUCTOR VALIDATION TESTS ============
 
@@ -1714,7 +1617,7 @@ contract MTXTokenTest is Test {
         MockLayerZeroEndpointV2 lz = new MockLayerZeroEndpointV2();
         
         vm.expectRevert(abi.encodeWithSelector(IMTXToken.InvalidAccessRestrictionAddress.selector));
-        new MTXToken(address(lz), owner, address(0));
+        new MTXToken(address(lz), owner, address(0), address(0));
     }
 
     function testConstructorRevertsWithInvalidOwner() public {
@@ -1722,13 +1625,13 @@ contract MTXTokenTest is Test {
         
         // OpenZeppelin Ownable reverts before our validation with OwnableInvalidOwner(address(0))
         vm.expectRevert();
-        new MTXToken(address(lz), address(0), address(accessRestriction));
+        new MTXToken(address(lz), address(0), address(accessRestriction), address(0));
     }
 
     function testConstructorRevertsWithInvalidLayerZeroEndpoint() public {
         // OFT constructor reverts before our validation runs (no data in error)
         vm.expectRevert();
-        new MTXToken(address(0), owner, address(accessRestriction));
+        new MTXToken(address(0), owner, address(accessRestriction), address(0));
     }
 
     // ============ SETACCESSRESTRICTION VALIDATION TESTS ============
@@ -1795,338 +1698,6 @@ contract MTXTokenTest is Test {
         vm.prank(manager);
         vm.expectRevert(abi.encodeWithSelector(IMTXToken.MaxAmountPerWindowMustBeGreaterThan0.selector));
         token.setRateLimitingParams(3, 15 minutes, 1 minutes, 1, 0);
-    }
-
-    // ============ TOTALBURNED TESTS ============
-
-    function testTotalBurnedInitialState() public {
-        // Test that totalBurned starts at 0
-        assertEq(token.totalBurned(), 0);
-    }
-
-    function testTotalBurnedIncreasesWithBurn() public {
-        address holder = makeAddr("holder");
-        uint256 mintAmount = 100_000_000 * 10**18; // 100M tokens
-        uint256 burnAmount = 50_000_000 * 10**18;   // 50M tokens
-
-        // Mint tokens to holder
-        vm.prank(treasury);
-        token.mint(holder, mintAmount);
-        assertEq(token.totalSupply(), mintAmount);
-        assertEq(token.balanceOf(holder), mintAmount);
-
-        // Initial totalBurned should be 0
-        assertEq(token.totalBurned(), 0);
-
-        // Burn tokens
-        vm.prank(holder);
-        token.burn(burnAmount);
-
-        // Verify totalBurned increased
-        assertEq(token.totalBurned(), burnAmount);
-        assertEq(token.totalSupply(), mintAmount - burnAmount);
-        assertEq(token.balanceOf(holder), mintAmount - burnAmount);
-    }
-
-    function testTotalBurnedIncreasesWithBurnFrom() public {
-        address holder = makeAddr("holder");
-        address spender = makeAddr("spender");
-        uint256 mintAmount = 100_000_000 * 10**18; // 100M tokens
-        uint256 burnAmount = 30_000_000 * 10**18;   // 30M tokens
-
-        // Mint tokens to holder
-        vm.prank(treasury);
-        token.mint(holder, mintAmount);
-        assertEq(token.totalSupply(), mintAmount);
-        assertEq(token.balanceOf(holder), mintAmount);
-
-        // Initial totalBurned should be 0
-        assertEq(token.totalBurned(), 0);
-
-        // Approve spender to burn tokens
-        vm.prank(holder);
-        token.approve(spender, burnAmount);
-
-        // Burn tokens using burnFrom
-        vm.prank(spender);
-        token.burnFrom(holder, burnAmount);
-
-        // Verify totalBurned increased
-        assertEq(token.totalBurned(), burnAmount);
-        assertEq(token.totalSupply(), mintAmount - burnAmount);
-        assertEq(token.balanceOf(holder), mintAmount - burnAmount);
-    }
-
-    function testTotalBurnedAccumulatesAcrossMultipleBurns() public {
-        address holder = makeAddr("holder");
-        uint256 mintAmount = 200_000_000 * 10**18; // 200M tokens
-        uint256 burnAmount1 = 50_000_000 * 10**18;  // 50M tokens
-        uint256 burnAmount2 = 30_000_000 * 10**18;  // 30M tokens
-        uint256 burnAmount3 = 20_000_000 * 10**18;  // 20M tokens
-
-        // Mint tokens to holder
-        vm.prank(treasury);
-        token.mint(holder, mintAmount);
-        assertEq(token.totalSupply(), mintAmount);
-
-        // Initial totalBurned should be 0
-        assertEq(token.totalBurned(), 0);
-
-        // First burn
-        vm.prank(holder);
-        token.burn(burnAmount1);
-        assertEq(token.totalBurned(), burnAmount1);
-        assertEq(token.totalSupply(), mintAmount - burnAmount1);
-
-        // Second burn
-        vm.prank(holder);
-        token.burn(burnAmount2);
-        assertEq(token.totalBurned(), burnAmount1 + burnAmount2);
-        assertEq(token.totalSupply(), mintAmount - burnAmount1 - burnAmount2);
-
-        // Third burn
-        vm.prank(holder);
-        token.burn(burnAmount3);
-        assertEq(token.totalBurned(), burnAmount1 + burnAmount2 + burnAmount3);
-        assertEq(token.totalSupply(), mintAmount - burnAmount1 - burnAmount2 - burnAmount3);
-    }
-
-    function testTotalBurnedAffectsMintingLimit() public {
-        address holder = makeAddr("holder");
-        uint256 maxSupply = token.MAX_SUPPLY();
-        uint256 mintAmount = 500_000_000 * 10**18; // 500M tokens
-        uint256 burnAmount = 200_000_000 * 10**18; // 200M tokens
-
-        // Mint some tokens
-        vm.prank(treasury);
-        token.mint(holder, mintAmount);
-        assertEq(token.totalSupply(), mintAmount);
-        assertEq(token.totalBurned(), 0);
-
-        // Burn some tokens
-        vm.prank(holder);
-        token.burn(burnAmount);
-        assertEq(token.totalSupply(), mintAmount - burnAmount);
-        assertEq(token.totalBurned(), burnAmount);
-
-        // Calculate remaining mintable supply
-        // MAX_SUPPLY - totalBurned = 1B - 200M = 800M
-        // Already minted: 500M - 200M = 300M
-        // Can still mint: 800M - 300M = 500M
-        uint256 remainingMintable = maxSupply - token.totalBurned() - token.totalSupply();
-        assertEq(remainingMintable, 500_000_000 * 10**18);
-
-        // Should be able to mint up to remaining mintable
-        vm.prank(treasury);
-        token.mint(holder, remainingMintable);
-        assertEq(token.totalSupply(), maxSupply - burnAmount);
-
-        // Should not be able to mint more
-        vm.prank(treasury);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
-        token.mint(holder, 1);
-    }
-
-    function testTotalBurnedWithMultipleHolders() public {
-        address holder1 = makeAddr("holder1");
-        address holder2 = makeAddr("holder2");
-        uint256 mintAmount1 = 100_000_000 * 10**18; // 100M tokens
-        uint256 mintAmount2 = 150_000_000 * 10**18; // 150M tokens
-        uint256 burnAmount1 = 40_000_000 * 10**18;  // 40M tokens
-        uint256 burnAmount2 = 60_000_000 * 10**18;  // 60M tokens
-
-        // Mint tokens to both holders
-        vm.prank(treasury);
-        token.mint(holder1, mintAmount1);
-        vm.prank(treasury);
-        token.mint(holder2, mintAmount2);
-
-        assertEq(token.totalSupply(), mintAmount1 + mintAmount2);
-        assertEq(token.totalBurned(), 0);
-
-        // Holder1 burns tokens
-        vm.prank(holder1);
-        token.burn(burnAmount1);
-        assertEq(token.totalBurned(), burnAmount1);
-        assertEq(token.totalSupply(), mintAmount1 + mintAmount2 - burnAmount1);
-
-        // Holder2 burns tokens
-        vm.prank(holder2);
-        token.burn(burnAmount2);
-        assertEq(token.totalBurned(), burnAmount1 + burnAmount2);
-        assertEq(token.totalSupply(), mintAmount1 + mintAmount2 - burnAmount1 - burnAmount2);
-    }
-
-    function testTotalBurnedWithBurnFromMultipleAccounts() public {
-        address holder1 = makeAddr("holder1");
-        address holder2 = makeAddr("holder2");
-        address spender = makeAddr("spender");
-        uint256 mintAmount1 = 100_000_000 * 10**18; // 100M tokens
-        uint256 mintAmount2 = 80_000_000 * 10**18;  // 80M tokens
-        uint256 burnAmount1 = 30_000_000 * 10**18;  // 30M tokens
-        uint256 burnAmount2 = 25_000_000 * 10**18;  // 25M tokens
-
-        // Mint tokens to both holders
-        vm.prank(treasury);
-        token.mint(holder1, mintAmount1);
-        vm.prank(treasury);
-        token.mint(holder2, mintAmount2);
-
-        assertEq(token.totalSupply(), mintAmount1 + mintAmount2);
-        assertEq(token.totalBurned(), 0);
-
-        // Approve spender for both holders
-        vm.prank(holder1);
-        token.approve(spender, burnAmount1);
-        vm.prank(holder2);
-        token.approve(spender, burnAmount2);
-
-        // Spender burns from holder1
-        vm.prank(spender);
-        token.burnFrom(holder1, burnAmount1);
-        assertEq(token.totalBurned(), burnAmount1);
-
-        // Spender burns from holder2
-        vm.prank(spender);
-        token.burnFrom(holder2, burnAmount2);
-        assertEq(token.totalBurned(), burnAmount1 + burnAmount2);
-        assertEq(token.totalSupply(), mintAmount1 + mintAmount2 - burnAmount1 - burnAmount2);
-    }
-
-    function testTotalBurnedPreventsReminting() public {
-        address holder = makeAddr("holder");
-        uint256 maxSupply = token.MAX_SUPPLY();
-        uint256 mintAmount = maxSupply; // Mint full supply
-        uint256 burnAmount = 100_000_000 * 10**18; // 100M tokens
-
-        // Mint full supply
-        vm.prank(treasury);
-        token.mint(holder, mintAmount);
-        assertEq(token.totalSupply(), maxSupply);
-        assertEq(token.totalBurned(), 0);
-
-        // Cannot mint more
-        vm.prank(treasury);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
-        token.mint(holder, 1);
-
-        // Burn some tokens
-        vm.prank(holder);
-        token.burn(burnAmount);
-        assertEq(token.totalSupply(), maxSupply - burnAmount);
-        assertEq(token.totalBurned(), burnAmount);
-
-        // Still cannot mint because totalBurned reduces the effective max supply
-        // Effective max supply = MAX_SUPPLY - totalBurned = 1B - 100M = 900M
-        // Already minted = 1B - 100M = 900M
-        // So no more can be minted
-        vm.prank(treasury);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MintingWouldExceedMaxSupply.selector));
-        token.mint(holder, 1);
-    }
-
-    function testTotalBurnedWithPartialBurns() public {
-        address holder = makeAddr("holder");
-        uint256 mintAmount = 1000 * 10**18; // 1000 tokens
-        uint256 burnAmount1 = 100 * 10**18; // 100 tokens
-        uint256 burnAmount2 = 50 * 10**18;  // 50 tokens
-        uint256 burnAmount3 = 25 * 10**18; // 25 tokens
-
-        // Mint tokens
-        vm.prank(treasury);
-        token.mint(holder, mintAmount);
-        assertEq(token.totalBurned(), 0);
-
-        // Multiple small burns
-        vm.prank(holder);
-        token.burn(burnAmount1);
-        assertEq(token.totalBurned(), burnAmount1);
-
-        vm.prank(holder);
-        token.burn(burnAmount2);
-        assertEq(token.totalBurned(), burnAmount1 + burnAmount2);
-
-        vm.prank(holder);
-        token.burn(burnAmount3);
-        assertEq(token.totalBurned(), burnAmount1 + burnAmount2 + burnAmount3);
-        assertEq(token.totalSupply(), mintAmount - burnAmount1 - burnAmount2 - burnAmount3);
-    }
-
-    function testTotalBurnedNeverDecreases() public {
-        address holder = makeAddr("holder");
-        uint256 mintAmount = 100_000_000 * 10**18; // 100M tokens
-        uint256 burnAmount = 50_000_000 * 10**18;  // 50M tokens
-
-        // Mint tokens
-        vm.prank(treasury);
-        token.mint(holder, mintAmount);
-        assertEq(token.totalBurned(), 0);
-
-        // Burn tokens
-        vm.prank(holder);
-        token.burn(burnAmount);
-        uint256 totalBurnedAfterFirst = token.totalBurned();
-        assertEq(totalBurnedAfterFirst, burnAmount);
-
-        // Burn more tokens - totalBurned should only increase
-        vm.prank(holder);
-        token.burn(burnAmount);
-        assertGt(token.totalBurned(), totalBurnedAfterFirst);
-        assertEq(token.totalBurned(), burnAmount * 2);
-    }
-
-    function testTotalBurnedAndTotalMintedRelationship() public {
-        address holder = makeAddr("holder");
-        uint256 mintAmount = 100_000_000 * 10**18; // 100M tokens
-        uint256 burnAmount = 30_000_000 * 10**18;  // 30M tokens
-
-        // Mint tokens
-        vm.prank(treasury);
-        token.mint(holder, mintAmount);
-        assertEq(token.totalMinted(), mintAmount);
-        assertEq(token.totalBurned(), 0);
-        assertEq(token.totalSupply(), mintAmount);
-
-        // Burn tokens
-        vm.prank(holder);
-        token.burn(burnAmount);
-        
-        // totalMinted should remain unchanged
-        assertEq(token.totalMinted(), mintAmount);
-        // totalBurned should increase
-        assertEq(token.totalBurned(), burnAmount);
-        // totalSupply should decrease
-        assertEq(token.totalSupply(), mintAmount - burnAmount);
-        
-        // Relationship: totalSupply = totalMinted - totalBurned
-        assertEq(token.totalSupply(), token.totalMinted() - token.totalBurned());
-    }
-
-    function testTotalBurnedWithMaxSupplyScenario() public {
-        address holder = makeAddr("holder");
-        uint256 maxSupply = token.MAX_SUPPLY();
-        uint256 burnAmount = 50_000_000 * 10**18; // 50M tokens
-
-        // Mint full supply
-        vm.prank(treasury);
-        token.mint(holder, maxSupply);
-        assertEq(token.totalMinted(), maxSupply);
-        assertEq(token.totalSupply(), maxSupply);
-        assertEq(token.totalBurned(), 0);
-
-        // Burn some tokens
-        vm.prank(holder);
-        token.burn(burnAmount);
-        
-        // Verify relationships
-        assertEq(token.totalMinted(), maxSupply);
-        assertEq(token.totalBurned(), burnAmount);
-        assertEq(token.totalSupply(), maxSupply - burnAmount);
-        
-        // Effective max supply for minting = MAX_SUPPLY - totalBurned
-        // Remaining mintable = MAX_SUPPLY - totalBurned - totalSupply
-        uint256 remainingMintable = maxSupply - token.totalBurned() - token.totalSupply();
-        assertEq(remainingMintable, 0); // Cannot mint more because totalMinted is at max
     }
 }
 
