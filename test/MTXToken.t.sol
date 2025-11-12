@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.22;
 
-import {Test,console} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {MTXToken} from "../src/mTXToken/MTXToken.sol";
 import {AccessRestriction} from "../src/accessRistriction/AccessRestriction.sol";
 import {MockLayerZeroEndpointV2} from "../src/mock/MockLayerZeroEndpointV2.sol";
