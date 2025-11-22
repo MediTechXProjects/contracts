@@ -51,17 +51,13 @@ contract AccessRestrictionTest is Test {
     function testInitialState() public view {
         // Test that admin has DEFAULT_ADMIN_ROLE
         assertTrue(accessRestriction.hasRole(accessRestriction.DEFAULT_ADMIN_ROLE(), admin));
-        
-        // Test that treasury has TREASURY_ROLE
-        assertTrue(accessRestriction.hasRole(accessRestriction.TREASURY_ROLE(), treasury));
-        
+
         // Test that contract is not paused initially
         assertFalse(accessRestriction.paused());
         
         // Test role constants
         assertEq(accessRestriction.ADMIN_ROLE(), keccak256("ADMIN_ROLE"));
         assertEq(accessRestriction.MANAGER_ROLE(), keccak256("MANAGER_ROLE"));
-        assertEq(accessRestriction.TREASURY_ROLE(), keccak256("TREASURY_ROLE"));
     }
 
     // ============ ROLE MANAGEMENT TESTS ============
@@ -260,12 +256,10 @@ contract AccessRestrictionTest is Test {
         vm.startPrank(admin);
         accessRestriction.grantRole(accessRestriction.ADMIN_ROLE(), user);
         accessRestriction.grantRole(accessRestriction.MANAGER_ROLE(), user);
-        accessRestriction.grantRole(accessRestriction.TREASURY_ROLE(), user);
         vm.stopPrank();
 
         assertTrue(accessRestriction.hasRole(accessRestriction.ADMIN_ROLE(), user));
         assertTrue(accessRestriction.hasRole(accessRestriction.MANAGER_ROLE(), user));
-        assertTrue(accessRestriction.hasRole(accessRestriction.TREASURY_ROLE(), user));
     }
 
     function testManagerCannotGrantRoles() public {

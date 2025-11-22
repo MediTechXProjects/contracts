@@ -13,12 +13,10 @@ contract DisableAllChecks is Script {
         MTXToken mtxToken = MTXToken(tokenAddress);
         
         // Disable all checks
-        mtxToken.setCheckBlackList(false);
         mtxToken.setCheckMaxWalletBalance(false);
         mtxToken.setCheckMaxTransfer(false);
-        mtxToken.setCheckBlockTxLimit(false);
-        mtxToken.setCheckWindowTxLimit(false);
-
+        mtxToken.setCheckTxInterval(false);
+        
         console.log("All checks disabled for token:", tokenAddress);
 
         vm.stopBroadcast();

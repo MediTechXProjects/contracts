@@ -15,14 +15,12 @@ contract CheckRole is Script {
 
         // Check roles
         bool isAdmin = accessRestriction.hasRole(accessRestriction.ADMIN_ROLE(), userAddress);
-        bool isTreasury = accessRestriction.hasRole(accessRestriction.TREASURY_ROLE(), userAddress);
         bool isManager = accessRestriction.hasRole(accessRestriction.MANAGER_ROLE(), userAddress);
         bool isMTXContract = accessRestriction.hasRole(accessRestriction.MTX_CONTRACT_ROLE(), userAddress);
 
         // Log results
         console.log("Role check for address:", userAddress);
         console.log("Is Admin:", isAdmin);
-        console.log("Is Treasury:", isTreasury); 
         console.log("Is Manager:", isManager);
         console.log("Is MTX Contract:", isMTXContract);
     }
