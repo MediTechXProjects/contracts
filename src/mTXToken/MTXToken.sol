@@ -117,7 +117,7 @@
          * @notice Enable or disable transaction interval check
          * @param enabled True to enable interval check, false to disable
          */
-        function setCheckTxInterval(bool enabled) external onlyManager {
+        function setCheckTxInterval(bool enabled) external override onlyManager {
             checkTxInterval = enabled;
             emit CheckTxIntervalUpdated(enabled);
         }
@@ -126,7 +126,7 @@
          * @notice Enable or disable maximum transfer amount check
          * @param enabled True to enable max transfer check, false to disable
          */
-        function setCheckMaxTransfer(bool enabled) external onlyManager {
+        function setCheckMaxTransfer(bool enabled) external override onlyManager {
             checkMaxTransfer = enabled;
             emit CheckMaxTransferUpdated(enabled);
         }
@@ -135,7 +135,7 @@
          * @notice Enable or disable maximum wallet balance check
          * @param enabled True to enable max wallet balance check, false to disable
          */
-        function setCheckMaxWalletBalance(bool enabled) external onlyManager {
+        function setCheckMaxWalletBalance(bool enabled) external override onlyManager {
             checkMaxWalletBalance = enabled;
             emit CheckMaxWalletBalanceUpdated(enabled);
         }
@@ -145,7 +145,7 @@
          * @param _maxWalletBalance Maximum wallet balance allowed
          * @param _maxTransferAmount Maximum transfer amount allowed
          */
-        function setTransferLimits(uint256 _maxWalletBalance, uint256 _maxTransferAmount) external onlyManager {
+        function setTransferLimits(uint256 _maxWalletBalance, uint256 _maxTransferAmount) external override onlyManager {
 
             if (_maxWalletBalance == 0) revert MaxWalletBalanceMustBeGreaterThan0();
             if (_maxTransferAmount == 0) revert MaxTransferAmountMustBeGreaterThan0();
