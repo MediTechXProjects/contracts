@@ -56,7 +56,7 @@ contract MTXTokenTest is Test {
     function testInitialState() public {
 
         // Test token metadata
-        assertEq(token.name(), "mtx-token");
+        assertEq(token.name(), "MediTechX");
         assertEq(token.symbol(), "MTX");
         assertEq(token.decimals(), 18);
         assertEq(token.totalSupply(), 1_000_000_000 * 10**18);
@@ -64,68 +64,17 @@ contract MTXTokenTest is Test {
 
 
         // Test initial configuration
-        assertEq(token.maxWalletBalance(), 100_000_000 * 10**18); // 1% of max supply
-        assertEq(token.maxTransferAmount(), 5_000_000 * 10**18);  // 0.05% of max supply
-        assertEq(token.maxTxsPerWindow(), 3);
-        assertEq(token.windowSize(), 15 minutes);
-        assertEq(token.minTxInterval(), 1 minutes);
-        assertEq(token.maxTxsPerBlock(), 1);
+        assertEq(token.maxWalletBalance(), 100_000_000 * 10**18); // 10% of max supply
+        assertEq(token.maxTransferAmount(), 5_000_000 * 10**18);  // 0.5% of max supply
+        assertEq(token.minTxInterval(), 30 seconds);
 
         // Test initial state flags
         assertTrue(token.restrictionsEnabled());
         assertTrue(token.checkTxInterval());
-        assertTrue(token.checkBlockTxLimit());
-        assertTrue(token.checkWindowTxLimit());
-        assertTrue(token.checkBlackList());
         assertTrue(token.checkMaxTransfer());
         assertTrue(token.checkMaxWalletBalance());
     }
 
-    // ============ BLACKLIST FUNCTION TESTS ============
-
-    function testAddToBlacklist() public {
-        address user = makeAddr("user");
-        
-        // Test that manager can add to blacklist
-        vm.prank(manager);
-        vm.expectEmit(true, false, false, true);
-        emit IMTXToken.Blacklisted(user, true);
-        token.addToBlacklist(user);
-        
-        assertTrue(token.blacklisted(user));
-    }
-
-    function testRemoveFromBlacklist() public {
-        address user = makeAddr("user");
-        
-        // First add to blacklist
-        vm.prank(manager);
-        token.addToBlacklist(user);
-        assertTrue(token.blacklisted(user));
-        
-        // Then remove from blacklist
-        vm.prank(manager);
-        vm.expectEmit(true, false, false, true);
-        emit IMTXToken.Blacklisted(user, false);
-        token.removeFromBlacklist(user);
-        
-        assertFalse(token.blacklisted(user));
-    }
-
-    function testBlacklistFunctionsFailForNonManager() public {
-        address nonManager = makeAddr("nonManager");
-        address user = makeAddr("user");
-        
-        // Test addToBlacklist
-        vm.prank(nonManager);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
-        token.addToBlacklist(user);
-        
-        // Test removeFromBlacklist
-        vm.prank(nonManager);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
-        token.removeFromBlacklist(user);
-    }
 
     // ============ WHITELIST FUNCTION TESTS ============
 
@@ -263,12 +212,12 @@ contract MTXTokenTest is Test {
         // Test that the old manager can no longer call manager functions
         vm.prank(manager);
         vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
-        token.addToBlacklist(makeAddr("user"));
+        token.addToWhitelist(makeAddr("user"));
         
         // Test that the new manager can call manager functions
         vm.prank(newManager);
-        token.addToBlacklist(makeAddr("user"));
-        assertTrue(token.blacklisted(makeAddr("user")));
+        token.addToWhitelist(makeAddr("user"));
+        assertTrue(token.whitelisted(makeAddr("user")));
     }
 
     function testSetAccessRestrictionAffectsPauseCheck() public {
@@ -297,10 +246,6 @@ contract MTXTokenTest is Test {
         token.setAccessRestriction(newAccessRestrictionProxy);
         vm.stopPrank();
 
-        // Test that transfers are blocked when the new access restriction is paused
-        vm.prank(owner);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.Paused.selector));
-        token.transfer(makeAddr("recipient"), 100 * 10**18);
     }
 
     // ============ CHECKTXINTERVAL FUNCTION TESTS ============
@@ -346,11 +291,9 @@ contract MTXTokenTest is Test {
         token.setCheckMaxTransfer(false);
         vm.prank(manager);
         token.setCheckMaxWalletBalance(false);
-        vm.prank(manager);
-        token.setCheckBlockTxLimit(false);
         
-        // Ensure minTxInterval is 1 minute
-        assertEq(token.minTxInterval(), 1 minutes);
+        // Ensure minTxInterval is 30 seconds
+        assertEq(token.minTxInterval(), 30 seconds);
         
         // First transaction should succeed
         vm.prank(user);
@@ -361,7 +304,7 @@ contract MTXTokenTest is Test {
         assertEq(token.balanceOf(user), 900 * 10**18);        
         // Second transaction should fail due to interval time restriction
         vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.TooManyTransactions.selector));
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.PleaseWaitAFewMinutesBeforeSendingAnotherTransaction.selector, 30));
         token.transfer(recipient2, 100 * 10**18);
         
         // Verify second transaction failed (recipient2 should have 0 balance)
@@ -399,8 +342,6 @@ contract MTXTokenTest is Test {
         token.setCheckMaxTransfer(false);
         vm.prank(manager);
         token.setCheckMaxWalletBalance(false);
-        vm.prank(manager);
-        token.setCheckBlockTxLimit(false);
         
         // Both transactions should succeed immediately without waiting
         vm.prank(user);
@@ -427,7 +368,7 @@ contract MTXTokenTest is Test {
         
         // Set interval to 30 seconds
         vm.prank(manager);
-        token.setRateLimitingParams(3, 15 minutes, 30, 2, 100_000_000 * 10**18);
+        token.setMinTxInterval(30);
         assertEq(token.minTxInterval(), 30);
         
         // Disable other checks to focus on transaction interval
@@ -435,97 +376,132 @@ contract MTXTokenTest is Test {
         token.setCheckMaxTransfer(false);
         vm.prank(manager);
         token.setCheckMaxWalletBalance(false);
-        vm.prank(manager);
-        token.setCheckBlockTxLimit(false);
         
-        // First transaction should succeed
+        // First transaction should succeed and set lastTxTime[user] = block.timestamp
         vm.prank(user);
         token.transfer(recipient1, 100 * 10**18);
+        uint256 firstTxTime = token.lastTxTime(user);
+        assertTrue(firstTxTime > 0, "lastTxTime should be set after first transaction");
         
-        // Second transaction should fail (only 30 seconds needed, but we haven't waited)
+        // Verify lastTxTime was set: second transaction should fail immediately
+        // because currentTime < lastTxTime[user] + minTxInterval
         vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.TooManyTransactions.selector));
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.PleaseWaitAFewMinutesBeforeSendingAnotherTransaction.selector, 30));
         token.transfer(recipient2, 100 * 10**18);
         
-        // Wait 30 seconds
-        vm.warp(block.timestamp + 30);
+        // Wait exactly 30 seconds (minTxInterval) from when lastTxTime was set
+        vm.warp(firstTxTime + 30);
         
-        // Now the second transaction should succeed
+        // Now the second transaction should succeed and update lastTxTime[user]
         vm.prank(user);
         token.transfer(recipient2, 100 * 10**18);
+        uint256 secondTxTime = token.lastTxTime(user);
+        assertEq(secondTxTime, block.timestamp, "lastTxTime should equal current block.timestamp");
+        assertTrue(secondTxTime > firstTxTime, "lastTxTime should be updated after second transaction");
+        assertEq(token.lastTxTime(makeAddr("anotherUser")), 0, "lastTxTime for other user should be 0");
+
         
-        // Verify both transactions succeeded
+        // Verify lastTxTime was updated: third transaction should fail immediately
+        // because currentTime < lastTxTime[user] + minTxInterval
+        vm.prank(user);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.PleaseWaitAFewMinutesBeforeSendingAnotherTransaction.selector, 30));
+        token.transfer(recipient1, 100 * 10**18);
+        
+        // Wait another 30 seconds from when lastTxTime was updated
+        vm.warp(secondTxTime + 30);
+        
+        // Now third transaction should succeed
+        vm.prank(user);
+        token.transfer(recipient1, 100 * 10**18);
+        uint256 thirdTxTime = token.lastTxTime(user);
+        assertEq(thirdTxTime, block.timestamp, "lastTxTime should be updated after third transaction");
+        
+        // Verify all transactions succeeded
+        assertEq(token.balanceOf(recipient1), 200 * 10**18);
+        assertEq(token.balanceOf(recipient2), 100 * 10**18);
+        assertEq(token.balanceOf(user), 700 * 10**18);
+    }
+
+    function testLastTxTimeIsSetCorrectlyAfterTransaction() public {
+        address user = makeAddr("user");
+        address recipient1 = makeAddr("recipient1");
+        address recipient2 = makeAddr("recipient2");
+        address recipient3 = makeAddr("recipient3");
+        
+        // Mint some tokens to user for testing
+        vm.prank(treasury);
+        token.transfer(user, 1000 * 10**18);
+        
+        // Set interval to 1 minute
+        vm.prank(manager);
+        token.setMinTxInterval(1 minutes);
+        assertEq(token.minTxInterval(), 1 minutes);
+        
+        // Disable other checks to focus on transaction interval
+        vm.prank(manager);
+        token.setCheckMaxTransfer(false);
+        vm.prank(manager);
+        token.setCheckMaxWalletBalance(false);
+        
+        // First transaction should succeed and set lastTxTime[user] = block.timestamp
+        vm.prank(user);
+        token.transfer(recipient1, 100 * 10**18);
+        uint256 firstTxTime = token.lastTxTime(user);
+        assertTrue(firstTxTime > 0, "lastTxTime should be set after first transaction");
+        
+        // Verify lastTxTime was set: try second transaction immediately - should fail
+        vm.prank(user);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.PleaseWaitAFewMinutesBeforeSendingAnotherTransaction.selector, 60));
+        token.transfer(recipient2, 100 * 10**18);
+        
+        // Wait exactly 1 minute (60 seconds) from when lastTxTime was set
+        vm.warp(firstTxTime + 60);
+        
+        // Second transaction should succeed and update lastTxTime[user] to new timestamp
+        vm.prank(user);
+        token.transfer(recipient2, 100 * 10**18);
+        uint256 secondTxTime = token.lastTxTime(user);
+        assertEq(secondTxTime, block.timestamp, "lastTxTime should equal current block.timestamp");
+        assertTrue(secondTxTime > firstTxTime, "lastTxTime should be updated after second transaction");
+        
+        // Verify lastTxTime was updated: try third transaction immediately - should fail
+        vm.prank(user);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.PleaseWaitAFewMinutesBeforeSendingAnotherTransaction.selector, 60));
+        token.transfer(recipient3, 100 * 10**18);
+        
+        // Wait exactly 1 minute from when lastTxTime was updated
+        vm.warp(secondTxTime + 60);
+        
+        // Third transaction should succeed
+        vm.prank(user);
+        token.transfer(recipient3, 100 * 10**18);
+        uint256 thirdTxTime = token.lastTxTime(user);
+        assertEq(thirdTxTime, block.timestamp, "lastTxTime should be updated after third transaction");
+        
+        // Verify all transactions succeeded and lastTxTime was updated correctly
         assertEq(token.balanceOf(recipient1), 100 * 10**18);
         assertEq(token.balanceOf(recipient2), 100 * 10**18);
-        assertEq(token.balanceOf(user), 800 * 10**18);
+        assertEq(token.balanceOf(recipient3), 100 * 10**18);
+        assertEq(token.balanceOf(user), 700 * 10**18);
     }
 
-    // ============ CHECKBLOCKTXLIMIT FUNCTION TESTS ============
+    // ============ SETMINTXINTERVAL FUNCTION TESTS ============
 
-    function testSetCheckBlockTxLimit() public {
-        // Test enabling
-        vm.prank(manager);
-        token.setCheckBlockTxLimit(false);
-        assertFalse(token.checkBlockTxLimit());
+    function testSetMinTxInterval() public {
+        uint256 newMinTxInterval = 2 minutes;
         
-        // Test disabling
         vm.prank(manager);
-        token.setCheckBlockTxLimit(true);
-        assertTrue(token.checkBlockTxLimit());
+        vm.expectEmit(false, false, false, true);
+        emit IMTXToken.MinTxIntervalUpdated(newMinTxInterval);
+        token.setMinTxInterval(newMinTxInterval);
+        
+        assertEq(token.minTxInterval(), newMinTxInterval);
 
         address nonManager = makeAddr("nonManager");
         
         vm.prank(nonManager);
         vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
-        token.setCheckBlockTxLimit(false);
-    }
-
-    // ============ CHECKWINDOWTXLIMIT FUNCTION TESTS ============
-
-    function testSetCheckWindowTxLimit() public {
-        // Test enabling
-        vm.prank(manager);
-        vm.expectEmit(true, false, false, true);
-        emit IMTXToken.CheckWindowTxLimitUpdated(false);
-        token.setCheckWindowTxLimit(false);
-        assertFalse(token.checkWindowTxLimit());
-        
-        // Test disabling
-        vm.prank(manager);
-        vm.expectEmit(true, false, false, true);
-        emit IMTXToken.CheckWindowTxLimitUpdated(true);
-        token.setCheckWindowTxLimit(true);
-        assertTrue(token.checkWindowTxLimit());
-
-        address nonManager = makeAddr("nonManager");
-        
-        vm.prank(nonManager);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
-        token.setCheckWindowTxLimit(false);
-    }
-
-    // ============ CHECKBLACKLIST FUNCTION TESTS ============
-
-    function testSetCheckBlackList() public {
-        // Test enabling
-        vm.prank(manager);
-        vm.expectEmit(true, false, false, true);
-        emit IMTXToken.CheckBlackListUpdated(false);
-        token.setCheckBlackList(false);
-        assertFalse(token.checkBlackList());
-        
-        // Test disabling
-        vm.prank(manager);
-        vm.expectEmit(true, false, false, true);
-        emit IMTXToken.CheckBlackListUpdated(true);
-        token.setCheckBlackList(true);
-        assertTrue(token.checkBlackList());
-
-        address nonManager = makeAddr("nonManager");
-
-        vm.prank(nonManager);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
-        token.setCheckBlackList(false);
+        token.setMinTxInterval(1 minutes);
     }
 
     // ============ CHECKMAXTRANSFER FUNCTION TESTS ============
@@ -609,7 +585,7 @@ contract MTXTokenTest is Test {
         
         // Test transfer that would exceed recipient's wallet limit (60 million more) - should fail
         vm.prank(sender);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.RecipientWouldExceedMaxWalletBalance.selector));
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.RecipientWouldExceedMaxWalletBalance.selector, 110_000_000 * 10**18, 100_000_000 * 10**18));
         token.transfer(recipient, 60_000_000 * 10**18);
         
         // Verify balance unchanged after failed transfer
@@ -637,14 +613,10 @@ contract MTXTokenTest is Test {
         vm.prank(manager);
         token.setCheckMaxTransfer(false);
         vm.prank(manager);
-        token.setCheckBlockTxLimit(false);
-        vm.prank(manager);
         token.setCheckTxInterval(false);
-        vm.prank(manager);
-        token.setCheckWindowTxLimit(false);
         
         vm.prank(sender);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.RecipientWouldExceedMaxWalletBalance.selector));
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.RecipientWouldExceedMaxWalletBalance.selector, 120_000_000 * 10**18, 100_000_000 * 10**18));
         token.transfer(recipient, 120_000_000 * 10**18);
         
         // Verify no transfer happened
@@ -694,15 +666,11 @@ contract MTXTokenTest is Test {
         vm.prank(manager);
         token.setCheckMaxTransfer(false);
         vm.prank(manager);
-        token.setCheckBlockTxLimit(false);
-        vm.prank(manager);
         token.setCheckTxInterval(false);
-        vm.prank(manager);
-        token.setCheckWindowTxLimit(false);
         
         // Regular recipient should be limited to 100 million tokens
         vm.prank(sender);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.RecipientWouldExceedMaxWalletBalance.selector));
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.RecipientWouldExceedMaxWalletBalance.selector, 120_000_000 * 10**18, 100_000_000 * 10**18));
         token.transfer(regularRecipient, 120_000_000 * 10**18);
         
         // Whitelisted recipient should bypass the wallet limit
@@ -715,598 +683,36 @@ contract MTXTokenTest is Test {
         assertEq(token.balanceOf(regularRecipient), 0);
     }
 
-    // ============ BLOCK TRANSACTION LIMIT SCENARIO TESTS ============
+    // ============ SETMINTXINTERVAL VALIDATION TESTS ============
 
-    function testBlockTxLimitEnforcement() public {
-        address user = makeAddr("user");
-        address recipient1 = makeAddr("recipient1");
-        address recipient2 = makeAddr("recipient2");
-        
-        // Mint tokens to user for testing
-        vm.prank(treasury);
-        token.transfer(user, 10_000_000 * 10**18);
-        
-        // Ensure blockTxLimit check is enabled
+    function testSetMinTxIntervalRevertsWithZeroValue() public {
         vm.prank(manager);
-        token.setCheckBlockTxLimit(true);
-        assertTrue(token.checkBlockTxLimit());
-        
-        // Disable other checks to focus on block limit
-        vm.prank(manager);
-        token.setCheckMaxTransfer(false);
-        vm.prank(manager);
-        token.setCheckMaxWalletBalance(false);
-        vm.prank(manager);
-        token.setCheckTxInterval(false);
-        
-        // Current max transactions per block is 1
-        assertEq(token.maxTxsPerBlock(), 1);
-        
-        // First transaction in block should succeed
-        vm.prank(user);
-        token.transfer(recipient1, 1_000_000 * 10**18);
-        assertEq(token.balanceOf(recipient1), 1_000_000 * 10**18);
-        
-        // Second transaction in same block should succeed
-        vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededTransactionsPerBlockLimit.selector));
-        token.transfer(recipient2, 1_000_000 * 10**18);
-                
-        // Verify third transaction failed
-        assertEq(token.balanceOf(recipient2), 0);
-        assertEq(token.balanceOf(user), 9_000_000 * 10**18);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MinTxIntervalMustBeGreaterThan0.selector));
+        token.setMinTxInterval(0);
     }
 
-    function testBlockTxLimitDisabled() public {
-        address user = makeAddr("user");
-        address recipient1 = makeAddr("recipient1");
-        address recipient2 = makeAddr("recipient2");
-        address recipient3 = makeAddr("recipient3");
-        address recipient4 = makeAddr("recipient4");
-        
-        // Mint tokens to user for testing
-        vm.prank(treasury);
-        token.transfer(user, 10_000_000 * 10**18);
-        
-        // First, try with block limit enabled - should fail after 2 transactions
+    function testSetMinTxIntervalRevertsWithValueGreaterThan5Minutes() public {
         vm.prank(manager);
-        token.setCheckBlockTxLimit(true);
-        assertTrue(token.checkBlockTxLimit());
-        
-        // Disable other checks
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MinTxIntervalMustBeLessThan5Minutes.selector));
+        token.setMinTxInterval(6 minutes);
+
         vm.prank(manager);
-        token.setCheckMaxTransfer(false);
-        vm.prank(manager);
-        token.setCheckMaxWalletBalance(false);
-        vm.prank(manager);
-        token.setCheckTxInterval(false);
-        
-        // First two transactions should succeed
-        vm.prank(user);
-        token.transfer(recipient1, 1_000_000 * 10**18);
-        
-        // Third transaction should fail
-        vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededTransactionsPerBlockLimit.selector));
-        token.transfer(recipient2, 1_000_000 * 10**18);
-        
-        // Now disable block limit check
-        vm.prank(manager);
-        token.setCheckBlockTxLimit(false);
-        assertFalse(token.checkBlockTxLimit());
-        
-        // Move to next block to reset the block transaction counter
-        vm.roll(block.number + 1);
-        
-        // Now all transactions in new block should succeed
-        vm.prank(user);
-        token.transfer(recipient3, 1_000_000 * 10**18);
-        vm.prank(user);
-        token.transfer(recipient4, 1_000_000 * 10**18);
-        
-        // Verify all transactions succeeded
-        assertEq(token.balanceOf(recipient1), 1_000_000 * 10**18);
-        assertEq(token.balanceOf(recipient2), 0);
-        assertEq(token.balanceOf(recipient3), 1_000_000 * 10**18);
-        assertEq(token.balanceOf(recipient4), 1_000_000 * 10**18);
-        assertEq(token.balanceOf(user), 7_000_000 * 10**18);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MinTxIntervalMustBeLessThan5Minutes.selector));
+        token.setMinTxInterval(301);
     }
 
-    function testBlockTxLimitWithWhitelistBypass() public {
-        address user = makeAddr("user");
-        address whitelistedUser = makeAddr("whitelistedUser");
-        address recipient1 = makeAddr("recipient1");
-        address recipient2 = makeAddr("recipient2");
-        address recipient3 = makeAddr("recipient3");
-        
-        // Mint tokens to both users
-        vm.prank(treasury);
-        token.transfer(user, 10_000_000 * 10**18);
-        vm.prank(treasury);
-        token.transfer(whitelistedUser, 10_000_000 * 10**18);
-        
-        // Add whitelistedUser to whitelist
+    function testSetMinTxIntervalWithValidValues() public {
         vm.prank(manager);
-        token.addToWhitelist(whitelistedUser);
-        assertTrue(token.whitelisted(whitelistedUser));
+        token.setMinTxInterval(30);
+        assertEq(token.minTxInterval(), 30);
         
-        // Ensure blockTxLimit check is enabled
         vm.prank(manager);
-        token.setCheckBlockTxLimit(true);
+        token.setMinTxInterval(2 minutes);
+        assertEq(token.minTxInterval(), 2 minutes);
         
-        // Disable other checks
         vm.prank(manager);
-        token.setCheckMaxTransfer(false);
-        vm.prank(manager);
-        token.setCheckMaxWalletBalance(false);
-        vm.prank(manager);
-        token.setCheckTxInterval(false);
-        
-        // Regular user should be limited to 2 transactions per block
-        vm.prank(user);
-        token.transfer(recipient1, 1_000_000 * 10**18);
-        vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededTransactionsPerBlockLimit.selector));
-        token.transfer(recipient2, 1_000_000 * 10**18);
-        
-        // Whitelisted user should bypass block limit
-        vm.prank(whitelistedUser);
-        token.transfer(recipient1, 1_000_000 * 10**18);
-        vm.prank(whitelistedUser);
-        token.transfer(recipient2, 1_000_000 * 10**18);
-        vm.prank(whitelistedUser);
-        token.transfer(recipient3, 1_000_000 * 10**18);
-        
-        // Verify whitelisted user's transactions all succeeded
-        assertEq(token.balanceOf(recipient1), 2_000_000 * 10**18); // 1M from user + 1M from whitelisted
-        assertEq(token.balanceOf(recipient2), 1_000_000 * 10**18); // 1M from user + 1M from whitelisted
-        assertEq(token.balanceOf(recipient3), 1_000_000 * 10**18); // 1M from whitelisted only
-        assertEq(token.balanceOf(whitelistedUser), 7_000_000 * 10**18);
-    }
-
-    // ============ WINDOW TRANSACTION LIMIT SCENARIO TESTS ============
-
-    function testWindowTxLimitEnforcement() public {
-        address user = makeAddr("user");
-        address recipient1 = makeAddr("recipient1");
-        address recipient2 = makeAddr("recipient2");
-        address recipient3 = makeAddr("recipient3");
-        address recipient4 = makeAddr("recipient4");
-        
-        // Mint tokens to user for testing
-        vm.prank(treasury);
-        token.transfer(user, 10_000_000 * 10**18);
-        
-        // Ensure windowTxLimit check is enabled
-        vm.prank(manager);
-        token.setCheckWindowTxLimit(true);
-        assertTrue(token.checkWindowTxLimit());
-        
-        // Disable other checks to focus on window limit
-        vm.prank(manager);
-        token.setCheckMaxTransfer(false);
-        vm.prank(manager);
-        token.setCheckMaxWalletBalance(false);
-        vm.prank(manager);
-        token.setCheckBlockTxLimit(false);
-        vm.prank(manager);
-        token.setCheckTxInterval(false);
-        
-        // Current max transactions per window is 3
-        assertEq(token.maxTxsPerWindow(), 3);
-        assertEq(token.windowSize(), 15 minutes);
-        
-        // First transaction in window should succeed
-        vm.prank(user);
-        token.transfer(recipient1, 1_000_000 * 10**18);
-        assertEq(token.balanceOf(recipient1), 1_000_000 * 10**18);
-        
-        // Second transaction in same window should succeed
-        vm.prank(user);
-        token.transfer(recipient2, 1_000_000 * 10**18);
-        assertEq(token.balanceOf(recipient2), 1_000_000 * 10**18);
-        
-        // Third transaction in same window should succeed
-        vm.prank(user);
-        token.transfer(recipient3, 1_000_000 * 10**18);
-        assertEq(token.balanceOf(recipient3), 1_000_000 * 10**18);
-        
-        // Fourth transaction in same window should fail
-        vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededTransactionsPerWindowLimit.selector));
-        token.transfer(recipient4, 1_000_000 * 10**18);
-        
-        // Verify fourth transaction failed
-        assertEq(token.balanceOf(recipient4), 0);
-        assertEq(token.balanceOf(user), 7_000_000 * 10**18);
-    }
-
-    function testWindowTxLimitDisabled() public {
-        address user = makeAddr("user");
-        address recipient1 = makeAddr("recipient1");
-        address recipient2 = makeAddr("recipient2");
-        address recipient3 = makeAddr("recipient3");
-        address recipient4 = makeAddr("recipient4");
-        address recipient5 = makeAddr("recipient5");
-        
-        // Mint tokens to user for testing
-        vm.prank(treasury);
-        token.transfer(user, 10_000_000 * 10**18);
-        
-        // First, try with window limit enabled - should fail after 3 transactions
-        vm.prank(manager);
-        token.setCheckWindowTxLimit(true);
-        assertTrue(token.checkWindowTxLimit());
-        
-        // Disable other checks
-        vm.prank(manager);
-        token.setCheckMaxTransfer(false);
-        vm.prank(manager);
-        token.setCheckMaxWalletBalance(false);
-        vm.prank(manager);
-        token.setCheckBlockTxLimit(false);
-        vm.prank(manager);
-        token.setCheckTxInterval(false);
-        
-        // First three transactions should succeed
-        vm.prank(user);
-        token.transfer(recipient1, 1_000_000 * 10**18);
-        vm.prank(user);
-        token.transfer(recipient2, 1_000_000 * 10**18);
-        vm.prank(user);
-        token.transfer(recipient3, 1_000_000 * 10**18);
-        
-        // Fourth transaction should fail
-        vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededTransactionsPerWindowLimit.selector));
-        token.transfer(recipient4, 1_000_000 * 10**18);
-        
-        // Now disable window limit check
-        vm.prank(manager);
-        token.setCheckWindowTxLimit(false);
-        assertFalse(token.checkWindowTxLimit());
-        
-        // Now all transactions should succeed
-        vm.prank(user);
-        token.transfer(recipient4, 1_000_000 * 10**18);
-        vm.prank(user);
-        token.transfer(recipient5, 1_000_000 * 10**18);
-        
-        // Verify all transactions succeeded
-        assertEq(token.balanceOf(recipient1), 1_000_000 * 10**18);
-        assertEq(token.balanceOf(recipient2), 1_000_000 * 10**18);
-        assertEq(token.balanceOf(recipient3), 1_000_000 * 10**18);
-        assertEq(token.balanceOf(recipient4), 1_000_000 * 10**18);
-        assertEq(token.balanceOf(recipient5), 1_000_000 * 10**18);
-        assertEq(token.balanceOf(user), 5_000_000 * 10**18);
-    }
-
-    function testWindowTxLimitWithWhitelistBypass() public {
-        address user = makeAddr("user");
-        address whitelistedUser = makeAddr("whitelistedUser");
-        address recipient1 = makeAddr("recipient1");
-        address recipient2 = makeAddr("recipient2");
-        address recipient3 = makeAddr("recipient3");
-        address recipient4 = makeAddr("recipient4");
-        
-        // Mint tokens to both users
-        vm.prank(treasury);
-        token.transfer(user, 10_000_000 * 10**18);
-        vm.prank(treasury);
-        token.transfer(whitelistedUser, 10_000_000 * 10**18);
-        
-        // Add whitelistedUser to whitelist
-        vm.prank(manager);
-        token.addToWhitelist(whitelistedUser);
-        assertTrue(token.whitelisted(whitelistedUser));
-        
-        // Ensure windowTxLimit check is enabled
-        vm.prank(manager);
-        token.setCheckWindowTxLimit(true);
-        
-        // Disable other checks
-        vm.prank(manager);
-        token.setCheckMaxTransfer(false);
-        vm.prank(manager);
-        token.setCheckMaxWalletBalance(false);
-        vm.prank(manager);
-        token.setCheckBlockTxLimit(false);
-        vm.prank(manager);
-        token.setCheckTxInterval(false);
-        
-        // Regular user should be limited to 3 transactions per window
-        vm.prank(user);
-        token.transfer(recipient1, 1_000_000 * 10**18);
-        vm.prank(user);
-        token.transfer(recipient2, 1_000_000 * 10**18);
-        vm.prank(user);
-        token.transfer(recipient3, 1_000_000 * 10**18);
-        
-        // Fourth transaction should fail for regular user
-        vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededTransactionsPerWindowLimit.selector));
-        token.transfer(recipient4, 1_000_000 * 10**18);
-        
-        // Whitelisted user should bypass window limit
-        vm.prank(whitelistedUser);
-        token.transfer(recipient1, 1_000_000 * 10**18);
-        vm.prank(whitelistedUser);
-        token.transfer(recipient2, 1_000_000 * 10**18);
-        vm.prank(whitelistedUser);
-        token.transfer(recipient3, 1_000_000 * 10**18);
-        vm.prank(whitelistedUser);
-        token.transfer(recipient4, 1_000_000 * 10**18);
-        
-        // Verify whitelisted user's transactions all succeeded
-        assertEq(token.balanceOf(recipient1), 2_000_000 * 10**18); // 1M from user + 1M from whitelisted
-        assertEq(token.balanceOf(recipient2), 2_000_000 * 10**18); // 1M from user + 1M from whitelisted
-        assertEq(token.balanceOf(recipient3), 2_000_000 * 10**18); // 1M from user + 1M from whitelisted
-        assertEq(token.balanceOf(recipient4), 1_000_000 * 10**18); // 1M from whitelisted only
-        assertEq(token.balanceOf(whitelistedUser), 6_000_000 * 10**18);
-    }
-
-    // ============ WINDOW TRANSFER AMOUNT LIMIT SCENARIO TESTS ============
-
-    function testWindowTransferAmountLimitEnforcement() public {
-        address user = makeAddr("user");
-        address recipient1 = makeAddr("recipient1");
-        address recipient2 = makeAddr("recipient2");
-        address recipient3 = makeAddr("recipient3");
-
-
-        vm.prank(manager);
-        token.addToWhitelist(user);
-        // Mint tokens to user for testing
-        vm.prank(treasury);
-        token.transfer(user, 200_000_000 * 10**18); // 200 million tokens
-
-        vm.prank(manager);
-        token.removeFromWhitelist(user);
-        
-        // Ensure windowTxLimit check is enabled
-        vm.prank(manager);
-        token.setCheckWindowTxLimit(true);
-        assertTrue(token.checkWindowTxLimit());
-        
-        // Disable other checks to focus on window amount limit
-        vm.prank(manager);
-        token.setCheckMaxTransfer(false);
-        vm.prank(manager);
-        token.setCheckMaxWalletBalance(false);
-        vm.prank(manager);
-        token.setCheckBlockTxLimit(false);
-        vm.prank(manager);
-        token.setCheckTxInterval(false);
-        
-        // Current max amount per window is 100 million tokens
-        assertEq(token.maxAmountPerWindow(), 100_000_000 * 10**18);
-        assertEq(token.windowSize(), 15 minutes);
-        
-        // First transfer within window amount limit should succeed
-        vm.prank(user);
-        token.transfer(recipient1, 50_000_000 * 10**18);
-        assertEq(token.balanceOf(recipient1), 50_000_000 * 10**18);
-        
-        // Second transfer within window amount limit should succeed
-        vm.prank(user);
-        token.transfer(recipient2, 30_000_000 * 10**18);
-        assertEq(token.balanceOf(recipient2), 30_000_000 * 10**18);
-        
-        // Third transfer that would exceed window amount limit should fail
-        vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededAmountPerWindowLimit.selector));
-        token.transfer(recipient3, 30_000_000 * 10**18);
-        
-        // Verify third transfer failed
-        assertEq(token.balanceOf(recipient3), 0);
-        assertEq(token.balanceOf(user), 120_000_000 * 10**18);
-    }
-
-    function testWindowTransferAmountLimitDisabled() public {
-        address user = makeAddr("user");
-
-    
-
-        address recipient1 = makeAddr("recipient1");
-        address recipient2 = makeAddr("recipient2");
-        address recipient3 = makeAddr("recipient3");
-
-        vm.prank(manager);
-        token.addToWhitelist(user);
-        
-        // Mint tokens to user for testing
-        vm.prank(treasury);
-        token.transfer(user, 200_000_000 * 10**18);
-
-        vm.prank(manager);
-        token.removeFromWhitelist(user);
-        
-        // First, try with window limit enabled - should fail when exceeding amount
-        vm.prank(manager);
-        token.setCheckWindowTxLimit(true);
-        assertTrue(token.checkWindowTxLimit());
-        
-        // Disable other checks
-        vm.prank(manager);
-        token.setCheckMaxTransfer(false);
-        vm.prank(manager);
-        token.setCheckMaxWalletBalance(false);
-        vm.prank(manager);
-        token.setCheckBlockTxLimit(false);
-        vm.prank(manager);
-        token.setCheckTxInterval(false);
-        
-        // First transfer should succeed
-        vm.prank(user);
-        token.transfer(recipient1, 50_000_000 * 10**18);
-        
-        // Second transfer should succeed
-        vm.prank(user);
-        token.transfer(recipient2, 30_000_000 * 10**18);
-        
-        // Third transfer should fail (exceeds 100M window limit)
-        vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededAmountPerWindowLimit.selector));
-        token.transfer(recipient3, 30_000_000 * 10**18);
-        
-        // Now disable window limit check
-        vm.prank(manager);
-        token.setCheckWindowTxLimit(false);
-        assertFalse(token.checkWindowTxLimit());
-        
-        // Now the same transfer should succeed
-        vm.prank(user);
-        token.transfer(recipient3, 30_000_000 * 10**18);
-        assertEq(token.balanceOf(recipient3), 30_000_000 * 10**18);
-        
-        // Test even larger transfer should succeed
-        vm.prank(user);
-        token.transfer(recipient1, 50_000_000 * 10**18);
-        assertEq(token.balanceOf(recipient1), 100_000_000 * 10**18);
-        assertEq(token.balanceOf(user), 40_000_000 * 10**18);
-    }
-
-    function testWindowTransferAmountLimitWithWhitelistBypass() public {
-        address user = makeAddr("user");
-        address whitelistedUser = makeAddr("whitelistedUser");
-        address recipient1 = makeAddr("recipient1");
-        address recipient2 = makeAddr("recipient2");
-        address recipient3 = makeAddr("recipient3");
-
-        vm.prank(manager);
-        token.addToWhitelist(user);
-        vm.prank(manager);
-        token.addToWhitelist(whitelistedUser);
-        
-        // Mint tokens to both users
-        vm.prank(treasury);
-        token.transfer(user, 200_000_000 * 10**18);
-        vm.prank(treasury);
-        token.transfer(whitelistedUser, 200_000_000 * 10**18);
-
-        vm.prank(manager);
-        token.removeFromWhitelist(user);
-        vm.prank(manager);
-        token.removeFromWhitelist(whitelistedUser);
-
-
-        
-        // Add whitelistedUser to whitelist
-        vm.prank(manager);
-        token.addToWhitelist(whitelistedUser);
-        assertTrue(token.whitelisted(whitelistedUser));
-        
-        // Ensure windowTxLimit check is enabled
-        vm.prank(manager);
-        token.setCheckWindowTxLimit(true);
-        
-        // Disable other checks
-        vm.prank(manager);
-        token.setCheckMaxTransfer(false);
-        vm.prank(manager);
-        token.setCheckMaxWalletBalance(false);
-        vm.prank(manager);
-        token.setCheckBlockTxLimit(false);
-        vm.prank(manager);
-        token.setCheckTxInterval(false);
-        
-        // Regular user should be limited to 100M per window
-        vm.prank(user);
-        token.transfer(recipient1, 50_000_000 * 10**18);
-        vm.prank(user);
-        token.transfer(recipient2, 30_000_000 * 10**18);
-        
-        // Third transfer should fail for regular user (exceeds 100M window limit)
-        vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededAmountPerWindowLimit.selector));
-        token.transfer(recipient3, 30_000_000 * 10**18);
-        
-        // Whitelisted user should bypass window amount limit
-        vm.prank(whitelistedUser);
-        token.transfer(recipient1, 50_000_000 * 10**18);
-        vm.prank(whitelistedUser);
-        token.transfer(recipient2, 30_000_000 * 10**18);
-        vm.prank(whitelistedUser);
-        token.transfer(recipient3, 30_000_000 * 10**18);
-        
-        // Verify whitelisted user's transactions all succeeded
-        assertEq(token.balanceOf(recipient1), 100_000_000 * 10**18); // 50M from user + 50M from whitelisted
-        assertEq(token.balanceOf(recipient2), 60_000_000 * 10**18); // 30M from user + 30M from whitelisted
-        assertEq(token.balanceOf(recipient3), 30_000_000 * 10**18); // 30M from whitelisted only
-        assertEq(token.balanceOf(whitelistedUser), 90_000_000 * 10**18);
-    }
-
-    function testWindowTransferAmountLimitTimeReset() public {
-        address user = makeAddr("user");
-        address recipient1 = makeAddr("recipient1");
-        address recipient2 = makeAddr("recipient2");
-        address recipient3 = makeAddr("recipient3");
-
-        vm.prank(manager);
-        token.addToWhitelist(user);
-        
-        // Mint tokens to user for testing
-        vm.prank(treasury);
-        token.transfer(user, 200_000_000 * 10**18); // 200 million tokens
-
-        vm.prank(manager);
-        token.removeFromWhitelist(user);
-        
-        // Ensure windowTxLimit check is enabled
-        vm.prank(manager);
-        token.setCheckWindowTxLimit(true);
-        assertTrue(token.checkWindowTxLimit());
-        
-        // Disable other checks to focus on window amount limit
-        vm.prank(manager);
-        token.setCheckMaxTransfer(false);
-        vm.prank(manager);
-        token.setCheckMaxWalletBalance(false);
-        vm.prank(manager);
-        token.setCheckBlockTxLimit(false);
-        vm.prank(manager);
-        token.setCheckTxInterval(false);
-        
-        // Current max amount per window is 100 million tokens
-        assertEq(token.maxAmountPerWindow(), 100_000_000 * 10**18);
-        assertEq(token.windowSize(), 15 minutes);
-        
-        // First transfer within window amount limit should succeed
-        vm.prank(user);
-        token.transfer(recipient1, 80_000_000 * 10**18);
-        assertEq(token.balanceOf(recipient1), 80_000_000 * 10**18);
-        
-        // Second transfer within window amount limit should succeed
-        vm.prank(user);
-        token.transfer(recipient2, 20_000_000 * 10**18);
-        assertEq(token.balanceOf(recipient2), 20_000_000 * 10**18);
-        
-        // Third transfer that would exceed window amount limit should fail
-        vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.ExceededAmountPerWindowLimit.selector));
-        token.transfer(recipient3, 30_000_000 * 10**18);
-        
-        // Verify third transfer failed
-        assertEq(token.balanceOf(recipient3), 0);
-        assertEq(token.balanceOf(user), 100_000_000 * 10**18);
-        
-        // Wait 15 minutes to reset the window
-        vm.warp(block.timestamp + 16 minutes);
-        
-        // Move to next block to ensure window reset
-        vm.roll(block.number + 1);
-        
-        // Now the same transfer should succeed because window has reset
-        vm.prank(user);
-        token.transfer(recipient3, 30_000_000 * 10**18);
-        assertEq(token.balanceOf(recipient3), 30_000_000 * 10**18);
-        assertEq(token.balanceOf(user), 70_000_000 * 10**18);
-        
-        // Test that we can now send another 70M in the new window
-        vm.prank(user);
-        token.transfer(recipient1, 70_000_000 * 10**18);
-        assertEq(token.balanceOf(recipient1), 150_000_000 * 10**18);
-        assertEq(token.balanceOf(user), 0);
+        token.setMinTxInterval(5 minutes);
+        assertEq(token.minTxInterval(), 5 minutes);
     }
 
     // ============ SETTRANSFERLIMITS FUNCTION TESTS ============
@@ -1344,6 +750,26 @@ contract MTXTokenTest is Test {
         token.setTransferLimits(100, 0);
     }
 
+    function testSetTransferLimitsRevertsWithInvalidValues() public {
+        vm.prank(manager);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MaxWalletBalanceMustBeGreaterThan30Million.selector));
+        token.setTransferLimits(29_000_000 * 10**18, 100_000 * 10**18);
+
+        vm.prank(manager);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MaxWalletBalanceMustBeGreaterThan30Million.selector));
+        token.setTransferLimits(1, 100_000 * 10**18);
+
+
+
+        vm.prank(manager);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MaxTransferAmountMustBeGreaterThan100Thousand.selector));
+        token.setTransferLimits(100_000_000 * 10**18, 99_000 * 10**18);
+
+        vm.prank(manager);
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MaxTransferAmountMustBeGreaterThan100Thousand.selector));
+        token.setTransferLimits(30_000_000 * 10**18, 1);
+    }
+
     function testMaxTransferLimitEnforcement() public {
         address user = makeAddr("user");
         address recipient = makeAddr("recipient");
@@ -1365,7 +791,7 @@ contract MTXTokenTest is Test {
         
         // Test transfer exceeding limit (6 million tokens) - should fail
         vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.TransferAmountExceedsMaximumAllowed.selector));
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.TransferAmountExceedsMaximumAllowed.selector, 6_000_000 * 10**18, 5_000_000 * 10**18));
         token.transfer(recipient, 6_000_000 * 10**18);
         
         // Verify balance unchanged after failed transfer
@@ -1388,14 +814,12 @@ contract MTXTokenTest is Test {
         
         // Disable other checks to focus on maxTransfer
         vm.prank(manager);
-        token.setCheckBlockTxLimit(false);
-        vm.prank(manager);
         token.setCheckMaxWalletBalance(false);
         vm.prank(manager);
         token.setCheckTxInterval(false);
         
         vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.TransferAmountExceedsMaximumAllowed.selector));
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.TransferAmountExceedsMaximumAllowed.selector, 20_000_000 * 10**18, 5_000_000 * 10**18));
         token.transfer(recipient, 20_000_000 * 10**18);
         
         // Verify no transfer happened
@@ -1442,7 +866,7 @@ contract MTXTokenTest is Test {
         
         // Regular user should be limited
         vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.TransferAmountExceedsMaximumAllowed.selector));
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.TransferAmountExceedsMaximumAllowed.selector, 6_000_000 * 10**18, 5_000_000 * 10**18));
         token.transfer(recipient, 6_000_000 * 10**18);
         
         // Whitelisted user should bypass the limit
@@ -1452,42 +876,6 @@ contract MTXTokenTest is Test {
         assertEq(token.balanceOf(whitelistedUser), 4_000_000 * 10**18);
     }
 
-    // ============ SETRATELIMITINGPARAMS FUNCTION TESTS ============
-
-    function testSetRateLimitingParams() public {
-        uint32 newMaxTxsPerWindow = 5;
-        uint64 newWindowSize = 30 minutes;
-        uint64 newMinTxInterval = 2 minutes;
-        uint32 newMaxTxsPerBlock = 3;
-        
-        vm.prank(manager);
-        vm.expectEmit(false, false, false, true);
-        emit IMTXToken.RateLimitingParamsUpdated(newMaxTxsPerWindow, newWindowSize, newMinTxInterval, newMaxTxsPerBlock, 50_000_000 * 10**18);
-        token.setRateLimitingParams(newMaxTxsPerWindow, newWindowSize, newMinTxInterval, newMaxTxsPerBlock, 50_000_000 * 10**18);
-        
-        assertEq(token.maxTxsPerWindow(), newMaxTxsPerWindow);
-        assertEq(token.windowSize(), newWindowSize);
-        assertEq(token.minTxInterval(), newMinTxInterval);
-        assertEq(token.maxTxsPerBlock(), newMaxTxsPerBlock);
-        assertEq(token.maxAmountPerWindow(), 50_000_000 * 10**18);
-
-        address nonManager = makeAddr("nonManager");
-        
-        vm.prank(nonManager);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.CallerNotManager.selector));
-        token.setRateLimitingParams(1, 1, 1, 1, 100_000_000 * 10**18);
-    }
-
-
-    function testSetRateLimitingParamsWithZeroValues() public {
-        vm.prank(manager);
-        token.setRateLimitingParams(1, 1, 1, 1, 100_000_000 * 10**18);
-        
-        assertEq(token.maxTxsPerWindow(), 1);
-        assertEq(token.windowSize(), 1);
-        assertEq(token.minTxInterval(), 1);
-        assertEq(token.maxTxsPerBlock(), 1);
-    }
 
     // ============ MAX SUPPLY / MINTING TESTS ============
 
@@ -1642,19 +1030,7 @@ contract MTXTokenTest is Test {
         token.setAccessRestriction(address(0));
     }
 
-    // ============ BLACKLIST/WHTIELIST VALIDATION TESTS ============
-
-    function testAddToBlacklistRevertsWithZeroAddress() public {
-        vm.prank(manager);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.InvalidAccountAddress.selector));
-        token.addToBlacklist(address(0));
-    }
-
-    function testRemoveFromBlacklistRevertsWithZeroAddress() public {
-        vm.prank(manager);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.InvalidAccountAddress.selector));
-        token.removeFromBlacklist(address(0));
-    }
+    // ============ WHITELIST VALIDATION TESTS ============
 
     function testAddToWhitelistRevertsWithZeroAddress() public {
         vm.prank(manager);
@@ -1668,36 +1044,5 @@ contract MTXTokenTest is Test {
         token.removeFromWhitelist(address(0));
     }
 
-    // ============ SETRATELIMITINGPARAMS VALIDATION TESTS ============
-
-    function testSetRateLimitingParamsRevertsWithZeroMaxTxsPerWindow() public {
-        vm.prank(manager);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MaxTxsPerWindowMustBeGreaterThan0.selector));
-        token.setRateLimitingParams(0, 15 minutes, 1 minutes, 1, 100_000_000 * 10**18);
-    }
-
-    function testSetRateLimitingParamsRevertsWithZeroWindowSize() public {
-        vm.prank(manager);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.WindowSizeMustBeGreaterThan0.selector));
-        token.setRateLimitingParams(3, 0, 1 minutes, 1, 100_000_000 * 10**18);
-    }
-
-    function testSetRateLimitingParamsRevertsWithZeroMinTxInterval() public {
-        vm.prank(manager);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MinTxIntervalMustBeGreaterThan0.selector));
-        token.setRateLimitingParams(3, 15 minutes, 0, 1, 100_000_000 * 10**18);
-    }
-
-    function testSetRateLimitingParamsRevertsWithZeroMaxTxsPerBlock() public {
-        vm.prank(manager);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MaxTxsPerBlockMustBeGreaterThan0.selector));
-        token.setRateLimitingParams(3, 15 minutes, 1 minutes, 0, 100_000_000 * 10**18);
-    }
-
-    function testSetRateLimitingParamsRevertsWithZeroMaxAmountPerWindow() public {
-        vm.prank(manager);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.MaxAmountPerWindowMustBeGreaterThan0.selector));
-        token.setRateLimitingParams(3, 15 minutes, 1 minutes, 1, 0);
-    }
 }
 

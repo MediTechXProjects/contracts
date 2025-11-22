@@ -28,43 +28,20 @@
         // Transfer limits (based on 1 billion total supply)
         uint256 public maxWalletBalance = 100_000_000 * 10**18; // 10% of 1 billion (100 million tokens)
         uint256 public maxTransferAmount = 5_000_000 * 10**18;  // 0.5% of 1 billion (5 million tokens)
+        uint256  public minTxInterval = 30 seconds;
 
-
-        // Blacklist mapping
-        mapping(address => bool) public override blacklisted;
         
+        mapping(address => uint256) public lastTxTime;
+
         // Whitelist mapping - whitelisted addresses bypass all checks
         mapping(address => bool) public override whitelisted;
         
         
         // Rate limiting control flags
         bool public checkTxInterval = true;
-        bool public checkBlockTxLimit = true;
-        bool public checkWindowTxLimit = true;
-        bool public checkBlackList = true;
         bool public checkMaxTransfer = true;
         bool public checkMaxWalletBalance = true;    
-        bool public restrictionsEnabled = true;
-        
-        
-        // Rate limiting parameters
-        uint32  public maxTxsPerWindow = 3;
-        uint32  public maxTxsPerBlock = 1;
-        uint64  public windowSize = 15 minutes;
-        uint64  public minTxInterval = 1 minutes;
-        uint256 public maxAmountPerWindow = 100_000_000 * 10**18;
-        
-        // Rate limiting state
-        struct RateLimit {
-            uint256 windowAmount;
-            uint64 windowStart;
-            uint64 lastTxTime;
-            uint64 lastTxBlock;
-            uint32 blockTxCount;
-            uint32 txCount;
-        }
-        
-        mapping(address => RateLimit) private rateLimits;
+        bool public restrictionsEnabled = true;        
         
         /**
          * @notice Modifier to restrict access to manager role
@@ -87,7 +64,7 @@
             address _owner,
             address _accessRestriction,
             address _treasury
-        ) OFT("mtx-token","MTX", _lzEndpoint, _owner) Ownable(_owner) ERC20Permit("mtx-token") {
+        ) OFT("MediTechX","MTX", _lzEndpoint, _owner) Ownable(_owner) ERC20Permit("MediTechX") {
 
             if (_accessRestriction == address(0)) revert InvalidAccessRestrictionAddress();
             if (_owner == address(0)) revert InvalidOwnerAddress();
@@ -102,7 +79,7 @@
         /**
          * @notice Update the access restriction contract address
          * @param _accessRestriction The new access restriction contract address
-         * @dev Only callable by manager role
+         * @dev Only callable by admin role
          */
         function setAccessRestriction(address _accessRestriction) external onlyAdmin {
             
@@ -110,31 +87,6 @@
 
             emit AccessRestrictionUpdated(address(accessRestriction), _accessRestriction);
             accessRestriction = AccessRestriction(_accessRestriction);
-        }
-
-
-        /**
-         * @notice Add an address to the blacklist
-         * @param account The address to blacklist
-         */
-        function addToBlacklist(address account) external override onlyManager {
-
-            if (account == address(0)) revert InvalidAccountAddress();
-
-            blacklisted[account] = true;
-            emit Blacklisted(account, true);
-        }
-
-        /**
-         * @notice Remove an address from the blacklist
-         * @param account The address to remove from blacklist
-         */
-        function removeFromBlacklist(address account) external override onlyManager {
-            
-            if (account == address(0)) revert InvalidAccountAddress();
-
-            blacklisted[account] = false;
-            emit Blacklisted(account, false);
         }
 
         /**
@@ -171,34 +123,6 @@
         }
 
         /**
-         * @notice Enable or disable block transaction limit check
-         * @param enabled True to enable block limit check, false to disable
-         */
-        function setCheckBlockTxLimit(bool enabled) external onlyManager {
-            checkBlockTxLimit = enabled;
-            emit CheckBlockTxLimitUpdated(enabled);
-        }
-
-        /**
-         * @notice Enable or disable window transaction limit check
-         * @param enabled True to enable window limit check, false to disable
-         */
-        function setCheckWindowTxLimit(bool enabled) external onlyManager {
-            checkWindowTxLimit = enabled;
-            emit CheckWindowTxLimitUpdated(enabled);
-        }
-
-
-        /**
-         * @notice Enable or disable blacklist check
-         * @param enabled True to enable blacklist check, false to disable
-         */
-        function setCheckBlackList(bool enabled) external onlyManager {
-            checkBlackList = enabled;
-            emit CheckBlackListUpdated(enabled);
-        }
-
-        /**
          * @notice Enable or disable maximum transfer amount check
          * @param enabled True to enable max transfer check, false to disable
          */
@@ -225,6 +149,11 @@
 
             if (_maxWalletBalance == 0) revert MaxWalletBalanceMustBeGreaterThan0();
             if (_maxTransferAmount == 0) revert MaxTransferAmountMustBeGreaterThan0();
+
+            if (_maxWalletBalance < 30_000_000 * 10**18) revert MaxWalletBalanceMustBeGreaterThan30Million();
+
+            if (_maxTransferAmount < 100_000 * 10**18) revert MaxTransferAmountMustBeGreaterThan100Thousand();
+
             
             maxWalletBalance = _maxWalletBalance;
             maxTransferAmount = _maxTransferAmount;
@@ -232,36 +161,22 @@
             emit TransferLimitsUpdated(_maxWalletBalance, _maxTransferAmount);
         }
 
-        /**
-         * @notice Set rate limiting parameters
-         * @param _maxTxsPerWindow Maximum transactions per window
-         * @param _windowSize Window size in seconds
+                /**
+         * @notice Set min tx interval
          * @param _minTxInterval Minimum time between transactions in seconds
-         * @param _maxTxsPerBlock Maximum transactions per block
          */
-        function setRateLimitingParams(
-            uint32 _maxTxsPerWindow,
-            uint64 _windowSize,
-            uint64 _minTxInterval,
-            uint32 _maxTxsPerBlock,
-            uint256 _maxAmountPerWindow
+        function setMinTxInterval(
+            uint256 _minTxInterval
         ) external onlyManager {
 
-
-            if (_maxTxsPerWindow == 0) revert MaxTxsPerWindowMustBeGreaterThan0();
-            if (_windowSize == 0) revert WindowSizeMustBeGreaterThan0();
             if (_minTxInterval == 0) revert MinTxIntervalMustBeGreaterThan0();
-            if (_maxTxsPerBlock == 0) revert MaxTxsPerBlockMustBeGreaterThan0();
-            if (_maxAmountPerWindow == 0) revert MaxAmountPerWindowMustBeGreaterThan0();
+            if (_minTxInterval > 5 minutes) revert MinTxIntervalMustBeLessThan5Minutes();
 
-            maxTxsPerWindow = _maxTxsPerWindow;
-            windowSize = _windowSize;
             minTxInterval = _minTxInterval;
-            maxTxsPerBlock = _maxTxsPerBlock;
-            maxAmountPerWindow = _maxAmountPerWindow;
             
-            emit RateLimitingParamsUpdated(_maxTxsPerWindow, _windowSize, _minTxInterval, _maxTxsPerBlock, _maxAmountPerWindow);
+            emit MinTxIntervalUpdated(_minTxInterval);
         }
+
 
         /**
          * @notice Permanently disable all restrictions (one-time only, admin only)
@@ -276,79 +191,34 @@
         }
 
         /**
-         * @notice Private function to check and update rate limits for an address
-         * @param from The address to check rate limits for
-         */
-        function _checkRateLimit(address from, uint256 amount) private {
-            
-            RateLimit storage rl = rateLimits[from];
-            
-            uint64 currentTime = uint64(block.timestamp);
-            uint64 currentBlock = uint64(block.number);
-
-            if (checkTxInterval) {
-                if (currentTime < rl.lastTxTime + minTxInterval) revert TooManyTransactions();
-            }
-            
-            if (checkBlockTxLimit) {
-                if (rl.lastTxBlock == currentBlock) {
-                    rl.blockTxCount += 1;
-                } else {
-                    rl.blockTxCount = 1;
-                    rl.lastTxBlock = currentBlock;
-                }
-                
-                if (rl.blockTxCount > maxTxsPerBlock) revert ExceededTransactionsPerBlockLimit();
-            }
-            
-            // Check transactions per window limit (if enabled)
-            if (checkWindowTxLimit) {
-
-                if (currentTime >= rl.windowStart + windowSize) {
-                    rl.windowStart = currentTime;
-                    rl.txCount = 0;
-                    rl.windowAmount = 0;
-                }
-
-                rl.txCount += 1;
-                rl.windowAmount += amount;
-                if (rl.txCount > maxTxsPerWindow) revert ExceededTransactionsPerWindowLimit();
-                if (rl.windowAmount > maxAmountPerWindow) revert ExceededAmountPerWindowLimit();
-            }
-            
-            // Update last transaction time
-            rl.lastTxTime = currentTime;
-        }
-
-        /**
          * @notice Override transfer to check blacklist and wallet limits
          */
         function _update(address from, address to, uint256 value) internal override {
 
             if (restrictionsEnabled) {
 
-                if (accessRestriction.paused()) revert Paused();
-
-                if(checkBlackList){
-                    if (blacklisted[from]) revert SenderIsBlacklisted();
-                    if (blacklisted[to]) revert RecipientIsBlacklisted();
-                }
-
                 if(from != address(0) && to != address(0)){
                     
                     if(!whitelisted[to]){
-                        if (checkMaxWalletBalance) { // Not a mint operation
-                            if (balanceOf(to) + value > maxWalletBalance) revert RecipientWouldExceedMaxWalletBalance();
+                        if (checkMaxWalletBalance) {
+                            if (balanceOf(to) + value > maxWalletBalance) revert RecipientWouldExceedMaxWalletBalance({attemptedBalance: balanceOf(to) + value,maxAllowed: maxWalletBalance});
                         }
                     }
 
                     if(!whitelisted[from]){
 
                         if(checkMaxTransfer){
-                            if (value > maxTransferAmount) revert TransferAmountExceedsMaximumAllowed();
+                            if (value > maxTransferAmount) revert TransferAmountExceedsMaximumAllowed({attemptedAmount: value,maxAllowed: maxTransferAmount});
                         }
-                        
-                        _checkRateLimit(from, value);                    
+                                    
+                        if (checkTxInterval) {
+
+                            uint256 currentTime = block.timestamp;
+
+                            if (currentTime < lastTxTime[from] + minTxInterval) revert  PleaseWaitAFewMinutesBeforeSendingAnotherTransaction({nextAllowedTimeSeconds: lastTxTime[from] + minTxInterval - currentTime});
+
+                            lastTxTime[from] = currentTime;
+                        }                 
                     }
                 }
             }
