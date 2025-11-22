@@ -66,7 +66,7 @@ contract MTXTokenTest is Test {
         // Test initial configuration
         assertEq(token.maxWalletBalance(), 100_000_000 * 10**18); // 10% of max supply
         assertEq(token.maxTransferAmount(), 5_000_000 * 10**18);  // 0.5% of max supply
-        assertEq(token.minTxInterval(), 30 seconds);
+        assertEq(token.minTxInterval(), 20 seconds);
 
         // Test initial state flags
         assertTrue(token.restrictionsEnabled());
@@ -293,7 +293,7 @@ contract MTXTokenTest is Test {
         token.setCheckMaxWalletBalance(false);
         
         // Ensure minTxInterval is 30 seconds
-        assertEq(token.minTxInterval(), 30 seconds);
+        assertEq(token.minTxInterval(), 20 seconds);
         
         // First transaction should succeed
         vm.prank(user);
@@ -304,7 +304,7 @@ contract MTXTokenTest is Test {
         assertEq(token.balanceOf(user), 900 * 10**18);        
         // Second transaction should fail due to interval time restriction
         vm.prank(user);
-        vm.expectRevert(abi.encodeWithSelector(IMTXToken.PleaseWaitAFewMinutesBeforeSendingAnotherTransaction.selector, 30));
+        vm.expectRevert(abi.encodeWithSelector(IMTXToken.PleaseWaitAFewMinutesBeforeSendingAnotherTransaction.selector, 20));
         token.transfer(recipient2, 100 * 10**18);
         
         // Verify second transaction failed (recipient2 should have 0 balance)
