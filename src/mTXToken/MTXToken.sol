@@ -213,7 +213,7 @@ contract MTXToken is OFT, ERC20Burnable, ERC20Permit, IMTXToken {
     }
 
     /**
-     * @notice Override transfer to check blacklist and wallet limits
+     * @notice Override transfer to check wallet limits
      */
     function _update(
         address from,
