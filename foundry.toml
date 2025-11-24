@@ -10,7 +10,7 @@ extra_output = ["storageLayout"]
 
 via_ir = true
 optimizer = true
-optimizer_runs = 8000
+optimizer_runs = 200
 
 private_key = "${PRIVATE_KEY}"
 
@@ -35,3 +35,4 @@ mainnet = "${RPC_URL}"
 sepolia = "${RPC_URL_SEPOLIA}"
 amoy = "${RPC_URL_AMOY}"
 base = "${RPC_URL_BASE_SEPOLIA}"
+bnb = "${RPC_URL_BNB}"

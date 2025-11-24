@@ -2,14 +2,15 @@
 
 ## 1️⃣ Overview
 
-**MTXToken** is an ERC-20 compatible cross-chain token built on **LayerZero’s OFT (Omnichain Fungible Token)** standard.  
+**MTXToken** is an ERC-20 compatible cross-chain token built on **LayerZero's OFT (Omnichain Fungible Token)** standard.  
 It integrates **security and anti-abuse mechanisms**, including:
 
-- **Maximum mint supply limit**
+- **Fixed maximum supply** (1 billion tokens minted at deployment)
 - **Wallet holding caps**
-- **Transfer and rate limiting**
-- **Blacklist / Whitelist enforcement**
-- **Global pause control via AccessRestriction**
+- **Transfer amount limits**
+- **Transaction rate limiting** (minimum interval between transactions)
+- **Whitelist system** (whitelisted addresses bypass all restrictions)
+- **Configurable restrictions** (can be individually enabled/disabled or permanently disabled)
 
 The token ensures secure, controlled, and predictable behavior across all supported chains while maintaining compliance with LayerZero’s OFT interoperability framework.
 
@@ -29,31 +30,30 @@ The token ensures secure, controlled, and predictable behavior across all suppor
 
 ### 2️⃣ Role Summary
 
-| Role              | Description                   | Key Functions                                                        |
-| ----------------- | ----------------------------- | -------------------------------------------------------------------- |
-| **ADMIN_ROLE**    | Global administrator          | `setAccessRestriction()`, `disableRestrictions()`                    |
-| **MANAGER_ROLE**  | Operational manager           | `setTransferLimits()`, `setRateLimitingParams()`, `addToBlacklist()` |
-| **TREASURY_ROLE** | Token issuer (mint authority) | `mint()`                                                             |
-| **DEFAULT_USER**  | Normal user                   | Regular transfers and burns                                          |
+| Role             | Description          | Key Functions                                                                                                                                                           |
+| ---------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **ADMIN_ROLE**   | Global administrator | `setAccessRestriction()`, `disableRestrictions()`                                                                                                                       |
+| **MANAGER_ROLE** | Operational manager  | `setTransferLimits()`, `setMinTxInterval()`, `addToWhitelist()`, `removeFromWhitelist()`, `setCheckTxInterval()`, `setCheckMaxTransfer()`, `setCheckMaxWalletBalance()` |
+| **DEFAULT_USER** | Normal user          | Regular transfers and burns                                                                                                                                             |
 
 ---
 
 ## 3️⃣ Supply Model and Mint Logic
 
-| **Parameter**   | **Description**                                                                                                                                                                                                             |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **MAX_SUPPLY**  | `1,000,000,000 MTX` — fixed total supply cap defined at deployment.                                                                                                                                                         |
-| **totalMinted** | Tracks all tokens minted by the Treasury on the source chain via the `mint()` function. This value **never decreases**, even if tokens are burned or bridged.                                                               |
-| **totalBurned** | Tracks all tokens burned locally via `burn()` or `burnFrom()` functions. This value **never decreases** and effectively reduces the maximum mintable supply to `MAX_SUPPLY - totalBurned`.                                  |
-| **mint()**      | Callable **only by `TREASURY_ROLE`**. Used to issue new tokens. Checks: `if (totalMinted + amount > MAX_SUPPLY)`.                                                                                                           |
-| **\_update()**  | Central transfer hook (LayerZero OFT standard) that ensures **all minting operations** (Treasury mints and bridge re-issuances) cannot exceed `MAX_SUPPLY - totalBurned`. This prevents burned tokens from being re-minted. |
+| **Parameter**          | **Description**                                                                                                                                                                                 |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **MAX_SUPPLY**         | `1,000,000,000 MTX` — fixed total supply cap defined at deployment.                                                                                                                             |
+| **Constructor Mint**   | All `MAX_SUPPLY` tokens are minted to the treasury address during contract deployment. This is a one-time operation that occurs only on the source chain (BSC).                                 |
+| **No Ongoing Minting** | The contract does not have a `mint()` function. All tokens are minted at deployment, and no additional tokens can be created after deployment.                                                  |
+| **Burn Functionality** | Tokens can be burned using `burn()` or `burnFrom()` functions (inherited from ERC20Burnable). Burned tokens are permanently removed from circulation.                                           |
+| **\_update()**         | Central transfer hook (LayerZero OFT standard) that enforces transfer restrictions, wallet limits, and rate limiting. Does not enforce supply limits since all tokens are minted at deployment. |
 
 ### 🔍 Summary
 
-- **Treasury-controlled minting:** All new token issuance occurs exclusively through the Treasury wallet.
-- **Burn tracking:** When tokens are burned, `totalBurned` increases, reducing the effective maximum supply. This ensures burned tokens cannot be re-minted.
-- **Cross-chain safety:** The `_update()` function enforces that all mint operations (including bridge re-issuances) respect the `MAX_SUPPLY - totalBurned` limit.
-- **Fixed-cap design:** Even with burns or bridge transfers, total token circulation across all chains remains ≤ `MAX_SUPPLY - totalBurned`.
+- **One-time minting:** All tokens are minted to the treasury during contract deployment. No ongoing minting capability exists.
+- **Fixed supply:** The total supply is fixed at `MAX_SUPPLY` and cannot be increased after deployment.
+- **Burn capability:** Tokens can be permanently burned using the standard ERC20Burnable functions, reducing the circulating supply.
+- **Cross-chain transfers:** Tokens can be transferred across chains via LayerZero OFT bridge, which burns tokens on the source chain and re-mints them on the destination chain.
 
 ---
 
@@ -68,108 +68,112 @@ The token ensures secure, controlled, and predictable behavior across all suppor
 
 - **Mint on Destination:**  
   The LayerZero OFT protocol triggers a **re-mint** of the same token amount on Chain B.  
-  This process does **not** count as new minting — it simply restores already existing supply on the destination chain.
+  This process does **not** create new tokens — it simply restores already existing supply on the destination chain.
 
-- **Source Chain Treasury Mint Only:**  
-  The **Treasury** is the **only entity allowed to perform actual minting**, and this can **only occur on the Source Chain**.  
+- **Source Chain Deployment:**  
+  All tokens are minted to the treasury during contract deployment on the source chain (BSC).  
   Other chains cannot mint new tokens independently — they only reissue tokens that were previously minted and burned via the OFT bridge.
 
-- **Supply Enforcement:**  
-  The `_update()` function ensures that the **aggregate token supply across all chains** never exceeds `MAX_SUPPLY - totalBurned`. This accounts for tokens burned locally, preventing them from being re-minted.
+- **Fixed Supply:**  
+  The total supply is fixed at `MAX_SUPPLY` and minted at deployment. Cross-chain transfers redistribute existing supply but do not create new tokens.
 
-- **Mint Path Limitation:**  
-  All mint operations (Treasury mints and bridge re-issuances) are **strictly limited by `MAX_SUPPLY - totalBurned`**, ensuring that burned tokens cannot be re-minted and maintaining supply integrity across all chains.
+### 🔥 Burn & Transfer Mechanics
 
-### 🔥 Burn & Mint Mechanics
-
-| Action                           | `totalMinted` | `totalBurned` | Effective MAX_SUPPLY (`MAX_SUPPLY - totalBurned`) | Notes                                                               |
-| -------------------------------- | ------------- | ------------- | ------------------------------------------------- | ------------------------------------------------------------------- |
-| Treasury mint                    | ↑             | -             | MAX_SUPPLY - totalBurned                          | Minting new tokens on source chain only, limited by MAX_SUPPLY      |
-| Local burn (`burn` / `burnFrom`) | -             | ↑             | MAX_SUPPLY - totalBurned                          | Reduces effective supply, tokens cannot be re-minted                |
-| Bridge burn (Chain A → B)        | -             | -             | MAX_SUPPLY - totalBurned                          | Tokens burned on source, re-minted on destination, supply unchanged |
-| Bridge re-mint (Chain B)         | -             | -             | MAX_SUPPLY - totalBurned                          | Reissues existing supply on destination chain only                  |
+| Action                           | Supply Impact                     | Notes                                              |
+| -------------------------------- | --------------------------------- | -------------------------------------------------- |
+| Constructor mint (deployment)    | All MAX_SUPPLY minted to treasury | One-time operation on source chain only            |
+| Local burn (`burn` / `burnFrom`) | Permanently reduces supply        | Tokens are permanently removed from circulation    |
+| Bridge burn (Chain A → B)        | Supply unchanged                  | Tokens burned on source, re-minted on destination  |
+| Bridge re-mint (Chain B)         | Supply unchanged                  | Reissues existing supply on destination chain only |
 
 ---
 
 # 5️⃣ \_update Function Details (Critical Section)
 
-This section explains the `_update` function in the MTXToken contract, which is the **central point for all token transfers, minting, and burning**, including rate limiting, wallet limits, and whitelist/blacklist checks.
+This section explains the `_update` function in the MTXToken contract, which is the **central point for all token transfers**, including rate limiting, wallet limits, and whitelist checks.
 
-1-Enforce maximum mint supply (MAX_SUPPLY)
+The function performs the following checks (in order):
 
-2-Control minting paths and roles
+1. **Restrictions Enabled Check** - Only applies restrictions if `restrictionsEnabled` is true
+2. **Wallet Balance Limits** - Enforces maximum wallet balance for non-whitelisted recipients
+3. **Transfer Amount Limits** - Enforces maximum transfer amount for non-whitelisted senders
+4. **Transaction Interval Limits** - Enforces minimum time between transactions for non-whitelisted senders
 
-3-Apply rate limiting on transactions
-
-4-Apply wallet and transfer limits
-
-5-Enforce whitelist / blacklist rules
-
-6-Respect paused state of the contract
-
-## 2️⃣ Mint Path Check
-
-```solidity
-if(from == address(0)) {
-    if (totalSupply() + value > MAX_SUPPLY - totalBurned) revert MintingWouldExceedMaxSupply();
-}
-```
-
-- When `from == address(0)`, a **mint operation** is occurring.
-- The contract enforces that the total supply after minting cannot exceed `MAX_SUPPLY - totalBurned`.
-- **`totalBurned`** tracks all tokens burned locally via `burn()` or `burnFrom()` functions. This value **never decreases** and effectively reduces the maximum mintable supply.
-- **Note:** This check applies to **all mint operations**, including:
-  - Treasury mints (via `mint()` function)
-  - Bridge re-issuances (cross-chain token transfers)
-- **Note:** When tokens are burned, `totalBurned` increases, which reduces the effective maximum supply (`MAX_SUPPLY - totalBurned`). This ensures that burned tokens cannot be re-minted, maintaining supply integrity.
-- **Note:** The `mint()` function has an additional check: `if (totalMinted + amount > MAX_SUPPLY)`, which prevents Treasury from minting more than `MAX_SUPPLY` regardless of burns.
-
-## 3️⃣ Source Chain Clarification
-
-- **Direct minting is only allowed on the Source Chain.** No tokens can be minted directly on destination chains.
-- Tokens transferred via the OFT bridge from other chains are **reissued logically** on the destination chain; this process does **not** increase `totalMinted` or `totalBurned`.
-- The `_update()` function enforces that **all mint operations** (including bridge re-issuances) respect the `MAX_SUPPLY - totalBurned` limit, ensuring supply integrity across all chains.
-- When tokens are burned on any chain, the effective maximum supply is reduced, preventing those tokens from being re-minted anywhere.
-
-## 4️⃣ Restrictions Enabled Check
+## 1️⃣ Restrictions Enabled Check
 
 ```solidity
 if (restrictionsEnabled) {
-    if (accessRestriction.paused()) revert Paused();
-```
-
-- Ensures no transactions occur if the contract is **paused**.
-
-## 5️⃣ Blacklist Enforcement
-
-```solidity
-if(checkBlackList){
-    if (blacklisted[from]) revert SenderIsBlacklisted();
-    if (blacklisted[to]) revert RecipientIsBlacklisted();
+    // Apply all restriction checks
 }
 ```
 
-- Prevents blacklisted addresses from sending or receiving tokens.
+- All restriction checks are only applied when `restrictionsEnabled` is `true`.
+- When `restrictionsEnabled` is `false`, all restrictions are bypassed and the token operates without limits.
+- The `disableRestrictions()` function (admin-only, one-time) permanently sets this to `false`.
 
-## 6️⃣ Wallet & Transfer Limits
+## 2️⃣ Wallet Balance Limits
 
 ```solidity
-if(from != address(0) && to != address(0)){
-    if(!whitelisted[to] && checkMaxWalletBalance){
+if(!whitelisted[to]){
+    if (checkMaxWalletBalance) {
         if (balanceOf(to) + value > maxWalletBalance) revert RecipientWouldExceedMaxWalletBalance();
     }
+}
+```
 
-    if(!whitelisted[from]){
-        if(checkMaxTransfer && value > maxTransferAmount) revert TransferAmountExceedsMaximumAllowed();
-        _checkRateLimit(from, value);
+- **Applies to:** Normal transfers (when both `from` and `to` are non-zero addresses)
+- **Recipient check:** If the recipient is not whitelisted and `checkMaxWalletBalance` is enabled, the recipient's balance after the transfer cannot exceed `maxWalletBalance`.
+- **Default value:** `maxWalletBalance = 100,000,000 MTX` (10% of MAX_SUPPLY)
+- **Whitelist bypass:** Whitelisted addresses are exempt from this check.
+
+## 3️⃣ Transfer Amount Limits
+
+```solidity
+if(!whitelisted[from]){
+    if(checkMaxTransfer){
+        if (value > maxTransferAmount) revert TransferAmountExceedsMaximumAllowed();
     }
 }
 ```
 
-- These checks **only apply to normal transfers**, not mint operations.
-- **Recipient wallet limit:** enforced if the recipient is not whitelisted.
-- **Sender transfer limit:** enforced if the sender is not whitelisted.
-- **Rate limiting:** ensures users cannot spam transactions, including:
-  - Maximum transactions per block
-  - Maximum transactions per time window
-  - Minimum interval between consecutive transactions
+- **Applies to:** Normal transfers (when both `from` and `to` are non-zero addresses)
+- **Sender check:** If the sender is not whitelisted and `checkMaxTransfer` is enabled, the transfer amount cannot exceed `maxTransferAmount`.
+- **Default value:** `maxTransferAmount = 5,000,000 MTX` (0.5% of MAX_SUPPLY)
+- **Whitelist bypass:** Whitelisted addresses are exempt from this check.
+
+## 4️⃣ Transaction Interval Limits
+
+```solidity
+if(!whitelisted[from]){
+    if (checkTxInterval) {
+        uint256 currentTime = block.timestamp;
+        if (currentTime < lastTxTime[from] + minTxInterval) revert PleaseWaitAFewMinutesBeforeSendingAnotherTransaction();
+        lastTxTime[from] = currentTime;
+    }
+}
+```
+
+- **Applies to:** Normal transfers (when both `from` and `to` are non-zero addresses)
+- **Rate limiting:** If the sender is not whitelisted and `checkTxInterval` is enabled, there must be at least `minTxInterval` seconds between consecutive transactions from the same address.
+- **Default value:** `minTxInterval = 30 seconds`
+- **Maximum value:** Cannot exceed 5 minutes
+- **Whitelist bypass:** Whitelisted addresses are exempt from this check.
+
+## 5️⃣ Whitelist System
+
+- **Whitelisted addresses** bypass all restriction checks:
+  - No wallet balance limits
+  - No transfer amount limits
+  - No transaction interval limits
+- **Management:** Only addresses with `MANAGER_ROLE` can add or remove addresses from the whitelist via `addToWhitelist()` and `removeFromWhitelist()` functions.
+- **Note:** The contract does not have a blacklist feature. Only whitelist is supported.
+
+## 6️⃣ Configuration Functions
+
+All restriction checks can be individually enabled or disabled by addresses with `MANAGER_ROLE`:
+
+- `setCheckMaxWalletBalance(bool enabled)` - Enable/disable wallet balance checks
+- `setCheckMaxTransfer(bool enabled)` - Enable/disable transfer amount checks
+- `setCheckTxInterval(bool enabled)` - Enable/disable transaction interval checks
+- `setTransferLimits(uint256 _maxWalletBalance, uint256 _maxTransferAmount)` - Update wallet and transfer limits
+- `setMinTxInterval(uint256 _minTxInterval)` - Update minimum transaction interval

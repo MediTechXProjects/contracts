@@ -10,13 +10,12 @@ contract AccessRestrictionDeploy is Script {
     function run() external {
         // Replace these env vars with your own values
         address admin = vm.envAddress("ADMIN_ADDRESS");
-        address treasury = vm.envAddress("TREASURY_ADDRESS");
 
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
         
         address _proxyAddress = Upgrades.deployUUPSProxy(
             "AccessRestriction.sol",
-            abi.encodeCall(AccessRestriction.initialize, (admin,treasury))
+            abi.encodeCall(AccessRestriction.initialize, (admin))
         );
 
         address implementationAddress = Upgrades.getImplementationAddress(
