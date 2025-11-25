@@ -639,6 +639,7 @@ contract MTXPresaleTest is Test {
         vm.warp(presaleEndTime + 1 * MONTH + 1);
 
         vm.prank(buyer1);
+        vm.expectRevert(IMTXPresale.NoTokensToClaim.selector);
         presale.claimTokens();
 
         // Claim first half at 3 months
