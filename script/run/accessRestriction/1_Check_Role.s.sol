@@ -8,7 +8,7 @@ contract CheckRole is Script {
     function run() external {
         // Get addresses from environment variables
         address accessRestrictionAddress = 0xDA05A33a4F06056e24590e8B3832F1dD05a98443;
-        address userAddress = 0x4620B283816f3817ED2313131C54877e2B93436b;
+        address userAddress = 0xDcC7cEd9a0af57bDe46c5Fb5dcE0163c23Fc2e86;
 
         // Create interface instance
         AccessRestriction accessRestriction = AccessRestriction(accessRestrictionAddress);
