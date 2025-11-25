@@ -646,6 +646,10 @@ contract MTXPresaleTest is Test {
         assertEq(address(presale).balance, 1 ether);
         assertEq(mtxToken.balanceOf(address(presale)), (50_000_000 - 2500) * 10**18);
 
+        presale.claimTokens();
+        
+
+
         // Claim second half at 6 months
         vm.warp(presaleEndTime + 6 * MONTH + 1);
         vm.prank(buyer1);
