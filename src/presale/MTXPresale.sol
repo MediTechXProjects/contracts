@@ -11,24 +11,14 @@ import { ChainlinkPriceFeed } from "./ChainlinkPriceFeed.sol";
 
 contract MTXPresale is IMTXPresale, ReentrancyGuard {
 
-    AccessRestriction public accessRestriction;
-
     IERC20 public mtxToken;
+    AccessRestriction public accessRestriction;
     ChainlinkPriceFeed public bnbUsdPriceFeed;
 
-    // Dynamic prices per model in USDT (with 18 decimals)
     mapping(LockModelType => uint256) public prices;
 
     uint256 public presaleStartTime;
     uint256 public presaleEndTime;
-    uint256 public listingTime; // kept for compatibility but NOT used for unlock logic in this version
-
-    // Purchase tracking
-    struct Purchase {
-        LockModelType model;
-        uint256 mtxAmount;
-        uint256 claimedAmount;
-    }
 
     mapping(address => Purchase[]) public userPurchases;
     mapping(address => uint256) public userTotalPurchased;
@@ -100,56 +90,60 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
      * @notice Buy MTX tokens with BNB
      * @param model Lock model (1, 2, or 3)
      */
-    function buyTokens(LockModelType model) external payable override nonReentrant notPaused onlyDuringPresale {
+    function buyExactBNB(LockModelType model) external payable override nonReentrant notPaused onlyDuringPresale {
 
         if (msg.value == 0) revert InvalidAmount();
 
         uint256 priceUsdt = prices[model];
         if (priceUsdt == 0) revert InvalidPrice();
 
-        // Get BNB/USD price from Chainlink (returns price with 8 decimals)
         (, int256 bnbUsdPrice, , , ) = bnbUsdPriceFeed.latestRoundData();
+
         if (bnbUsdPrice <= 0) revert InvalidPrice();
 
-        // Convert BNB sent to USD value
-        // msg.value is in wei (18 decimals), bnbUsdPrice is in 8 decimals
-        // USD value = (msg.value * bnbUsdPrice) / 10^8 (result in 18 decimals)
         uint256 usdValue = (msg.value * uint256(bnbUsdPrice)) / 1e8;
 
-        // Calculate MTX amount: (USD value * 10^18) / priceUsdt
-        // Both usdValue and priceUsdt are in 18 decimals
         uint256 mtxAmount = (usdValue * 1e18) / priceUsdt;
 
         if (mtxAmount == 0) revert InvalidAmount();
 
-        if (totalMTXSold + mtxAmount > maxMTXSold) revert SaleLimitExceeded();
+        _recordPurchase(msg.sender, mtxAmount, msg.value, model);
+    }
 
-        Purchase[] storage purchases = userPurchases[msg.sender];
+    function buyExactMTX(uint256 mtxWanted, LockModelType model)
+    external
+    payable
+    nonReentrant
+    notPaused
+    onlyDuringPresale
+    {
+        if (mtxWanted == 0) revert InvalidAmount();
 
-        bool found = false;
+        uint256 priceUsdt = prices[model];
+        if (priceUsdt == 0) revert InvalidPrice();
 
-        for (uint256 i = 0; i < purchases.length; i++) {
-            if (purchases[i].model == model) {
-                purchases[i].mtxAmount += mtxAmount;
-                found = true;
-                break;
-            }
+        (, int256 bnbUsdPrice, , , ) = bnbUsdPriceFeed.latestRoundData();
+
+        if (bnbUsdPrice <= 0) revert InvalidPrice();
+
+        // USD needed for that MTX amount
+        uint256 usdRequired = (mtxWanted * priceUsdt) / 1e18;
+
+        // BNB required (oracle has 8 decimals)
+        uint256 bnbRequired = (usdRequired * 1e8) / uint256(bnbUsdPrice);
+
+        if (msg.value < bnbRequired) revert InsufficientBNBBalance(); // user sent less BNB
+
+
+        _recordPurchase(msg.sender, mtxWanted, bnbRequired, model);
+
+                // refund extra BNB
+        uint256 refund = msg.value - bnbRequired;
+
+        if (refund > 0) {
+            (bool success, ) = msg.sender.call{value: refund}("");
+            if (!success) revert RefundFailed();
         }
-
-        if (!found) {
-            purchases.push(Purchase({
-                model: model,
-                mtxAmount: mtxAmount,
-                claimedAmount: 0
-            }));
-        }
-
-        // Update tracking
-        userTotalPurchased[msg.sender] += mtxAmount;
-        totalBNBCollected += msg.value;
-        totalMTXSold += mtxAmount;
-
-        emit TokensPurchased(msg.sender, msg.value, mtxAmount, model);
     }
 
     /**
@@ -166,17 +160,16 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
             if (claimable > 0) {
                 purchase.claimedAmount += claimable;
                 totalClaimable += claimable;
+
+                emit TokensClaimed(msg.sender, claimable, purchase.model);
             }
         }
 
         if (totalClaimable == 0) revert NoTokensToClaim();
 
-        // Transfer MTX tokens to user (require success)
         bool success = mtxToken.transfer(msg.sender, totalClaimable);
 
         if (!success) revert TransferFailed();
-
-        emit TokensClaimed(msg.sender, totalClaimable);
     }
 
     /**
@@ -186,8 +179,9 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
      *
      * NOTE: Unlock times are calculated from presaleEndTime (not purchaseTime).
      */
-    function calculateClaimable(Purchase memory purchase) public view returns (uint256) {
+    function calculateClaimable(Purchase memory purchase) public view override returns (uint256) {
         uint256 remaining = purchase.mtxAmount - purchase.claimedAmount;
+
         if (remaining == 0) return 0;
 
         uint256 currentTime = block.timestamp;
@@ -321,18 +315,6 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
     }
 
     /**
-     * @notice Set listing time for Model 3 tokens (admin only)
-     * @dev kept for compatibility but NOT used in unlock calculations in this version
-     * @param _listingTime Timestamp when listing occurs
-     */
-    function setListingTime(uint256 _listingTime) external override onlyAdmin {
-        uint256 oldTime = listingTime;
-        listingTime = _listingTime;
-
-        emit ListingTimeUpdated(oldTime, _listingTime);
-    }
-
-    /**
      * @notice Set price for a specific model (admin only)
      * @param model Lock model (1, 2, or 3)
      * @param _price New price in USDT (with 18 decimals)
@@ -370,7 +352,7 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
      * @param _saleLimit Maximum amount of MTX tokens that can be sold
      */
     function setSaleLimit(uint256 _saleLimit) external override onlyAdmin {
-        if (_saleLimit == 0 || _saleLimit < totalMTXSold || _saleLimit < maxMTXSold) revert InvalidAmount();
+        if (_saleLimit == 0 || _saleLimit < totalMTXSold) revert InvalidAmount();
 
         uint256 oldLimit = maxMTXSold;
         maxMTXSold = _saleLimit;
@@ -409,8 +391,8 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
 
         if (withdrawableAmount == 0) revert InvalidAmount();
 
-        bool ok = mtxToken.transfer(to, withdrawableAmount);
-        if (!ok) revert TransferFailed();
+        bool success = mtxToken.transfer(to, withdrawableAmount);
+        if (!success) revert TransferFailed();
 
         emit MTXTokensWithdrawn(to, withdrawableAmount);
     }
@@ -419,13 +401,54 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
      * @notice Get presale status
      * @return isActive True if presale is currently active
      * @return isEnded True if presale has ended
-     * @return listingTimeSet True if listing time is set (kept for compatibility)
      */
-    function getPresaleStatus() external view returns (bool isActive, bool isEnded, bool listingTimeSet) {
+    function getPresaleStatus() external view returns (bool isActive, bool isEnded) {
         uint256 currentTime = block.timestamp;
         isActive = currentTime >= presaleStartTime && currentTime < presaleEndTime;
         isEnded = currentTime >= presaleEndTime;
-        listingTimeSet = listingTime > 0;
+    }
+
+        /**
+     * @notice Internal function to record a purchase
+     * @param user Address of the buyer
+     * @param mtxAmount Amount of MTX tokens purchased
+     * @param bnbAmount Amount of BNB paid
+     * @param model Lock model type
+     */
+    function _recordPurchase(
+        address user,
+        uint256 mtxAmount,
+        uint256 bnbAmount,
+        LockModelType model
+    ) private {
+        if (totalMTXSold + mtxAmount > maxMTXSold) revert SaleLimitExceeded();
+
+        Purchase[] storage purchases = userPurchases[user];
+
+        bool found = false;
+
+        for (uint256 i = 0; i < purchases.length; i++) {
+            if (purchases[i].model == model) {
+                purchases[i].mtxAmount += mtxAmount;
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            purchases.push(Purchase({
+                model: model,
+                mtxAmount: mtxAmount,
+                claimedAmount: 0
+            }));
+        }
+
+        // Update tracking
+        userTotalPurchased[user] += mtxAmount;
+        totalBNBCollected += bnbAmount;
+        totalMTXSold += mtxAmount;
+
+        emit TokensPurchased(user, bnbAmount, mtxAmount, model);
     }
 
     /**
