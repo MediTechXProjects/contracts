@@ -11,7 +11,7 @@ interface IMTXPresale {
     enum LockModelType {
         SIX_MONTH_LOCK,      // Model 1
         HALF_3M_HALF_6M,     // Model 2 (50% at 3 months, 50% at 6 months)
-        TWENTY_DAY_VESTING   // Model 3 (20% every 20 days)
+        MONTHLY_VESTING   // Model 3 (20% in preSale end, 16% after 35 days, 16% every month)
     }
     struct Purchase {
         LockModelType model;
@@ -63,7 +63,6 @@ interface IMTXPresale {
     function withdrawBNB(address to) external;
     function withdrawMTXTokens(address to) external;
     function getPrice(LockModelType model) external view returns (uint256);
-    function getBnbUsdPrice() external view returns (uint256);
     function getPresaleStatus() external view returns (bool isActive, bool isEnded);
 }
 

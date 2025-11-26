@@ -3,8 +3,6 @@ pragma solidity ^0.8.20;
 
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-
-import { IMTXToken } from "../mTXToken/IMTXToken.sol";
 import { AccessRestriction } from "../accessRistriction/AccessRestriction.sol";
 import { IMTXPresale } from "./IMTXPresale.sol";
 import { ChainlinkPriceFeed } from "./ChainlinkPriceFeed.sol";
@@ -28,8 +26,6 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
     uint256 public maxMTXSold = 50_000_000 * 10**18;
     // Time constants
     uint256 public constant MONTH = 30 days;
-    uint256 public constant DAY_20 = 20 days;
-
     /**
      * @notice Modifier to restrict access to admin role
      */
@@ -54,6 +50,11 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
         _;
     }
 
+    modifier onlyAfterPresaleEnd() {
+        if (block.timestamp < presaleEndTime) revert PresaleNotEnded();
+        _;
+    }
+
     modifier notPaused() {
         if (accessRestriction.paused()) revert Paused();
         _;
@@ -67,11 +68,11 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
         uint256 _presaleEndTime,
         uint256 _priceSixMonths,
         uint256 _priceThreeMonths,
-        uint256 _priceTwentyDays
+        uint256 _priceMonthlyVesting
     ) {
         if (_mtxToken == address(0) || _accessRestriction == address(0) || _bnbUsdPriceFeed == address(0)) revert InvalidAddress();
         if (_presaleEndTime <= _presaleStartTime) revert InvalidTime();
-        if (_priceSixMonths == 0 || _priceThreeMonths == 0 || _priceTwentyDays == 0) revert InvalidPrice();
+        if (_priceSixMonths == 0 || _priceThreeMonths == 0 || _priceMonthlyVesting == 0) revert InvalidPrice();
 
         mtxToken = IERC20(_mtxToken);
         accessRestriction = AccessRestriction(_accessRestriction);
@@ -83,7 +84,7 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
         // Set initial prices in USDT (with 18 decimals)
         prices[LockModelType.SIX_MONTH_LOCK] = _priceSixMonths;
         prices[LockModelType.HALF_3M_HALF_6M] = _priceThreeMonths;
-        prices[LockModelType.TWENTY_DAY_VESTING] = _priceTwentyDays;
+        prices[LockModelType.MONTHLY_VESTING] = _priceMonthlyVesting;
     }
 
     /**
@@ -141,7 +142,7 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
         uint256 refund = msg.value - bnbRequired;
 
         if (refund > 0) {
-            (bool success, ) = msg.sender.call{value: refund}("");
+            (bool success, ) = payable(msg.sender).call{value: refund}("");
             if (!success) revert RefundFailed();
         }
     }
@@ -206,19 +207,38 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
                     return firstHalf - purchase.claimedAmount;
                 }
             }
-        } else if (purchase.model == LockModelType.TWENTY_DAY_VESTING) {
-            // Model 3: 20% every 20 days, starting at presaleEndTime (first 20% at presale end)
+        } else if (purchase.model == LockModelType.MONTHLY_VESTING) {
 
             if (currentTime < presaleEndTime) return 0;
 
-            uint256 periods = (currentTime - presaleEndTime) / DAY_20;
+            uint256 totalUnlocked = 0;
 
-            // +1 because first 20% is available at period 0 (presaleEndTime)
-            uint256 unlockedPortions = periods + 1;
-            if (unlockedPortions > 5) unlockedPortions = 5;
+            uint256 amount20 = (purchase.mtxAmount * 20) / 100;
+            uint256 amount16 = (purchase.mtxAmount * 16) / 100;
 
-            uint256 totalUnlocked = (purchase.mtxAmount * unlockedPortions) / 5;
-            if (totalUnlocked > purchase.mtxAmount) totalUnlocked = purchase.mtxAmount;
+            // --------- Phase 1: At presale end (20%) ---------
+            totalUnlocked += amount20;
+
+            // --------- Phase 2: After 35 days (16%) ----------
+            uint256 t35 = presaleEndTime + 35 days;
+
+            if (currentTime >= t35) {
+                totalUnlocked += amount16;
+            }
+
+            uint256 baseTime = t35;
+
+            if (currentTime >= baseTime) {
+                uint256 monthsPassed = (currentTime - baseTime) / MONTH;
+
+                if (monthsPassed > 4) monthsPassed = 4;
+
+                totalUnlocked += monthsPassed * amount16;
+            }
+
+            if (totalUnlocked > purchase.mtxAmount) {
+                totalUnlocked = purchase.mtxAmount;
+            }
 
             if (totalUnlocked > purchase.claimedAmount) {
                 return totalUnlocked - purchase.claimedAmount;
@@ -292,7 +312,7 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
      * @notice Set presale start time (admin only)
      * @param _startTime Timestamp when presale starts
      */
-    function setPresaleStartTime(uint256 _startTime) external override onlyAdmin {
+    function setPresaleStartTime(uint256 _startTime) external override onlyAdmin onlyBeforePresaleStart {
         if (_startTime >= presaleEndTime) revert InvalidTime();
 
         uint256 oldTime = presaleStartTime;
@@ -305,7 +325,7 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
      * @notice Set presale end time (admin only)
      * @param _endTime Timestamp when presale ends
      */
-    function setPresaleEndTime(uint256 _endTime) external override onlyAdmin {
+    function setPresaleEndTime(uint256 _endTime) external override onlyAdmin onlyBeforePresaleStart {
         if (_endTime <= presaleStartTime) revert InvalidTime();
 
         uint256 oldTime = presaleEndTime;
@@ -319,7 +339,7 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
      * @param model Lock model (1, 2, or 3)
      * @param _price New price in USDT (with 18 decimals)
      */
-    function setPrice(LockModelType model, uint256 _price) external override onlyAdmin {
+    function setPrice(LockModelType model, uint256 _price) external override onlyAdmin onlyBeforePresaleStart {
         if (_price == 0) revert InvalidPrice();
 
         uint256 oldPrice = prices[model];
@@ -332,19 +352,9 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
      * @notice Set BNB/USD price feed address (admin only)
      * @param _priceFeed Address of Chainlink BNB/USD price feed
      */
-    function setBnbUsdPriceFeed(address _priceFeed) external onlyAdmin {
+    function setBnbUsdPriceFeed(address _priceFeed) external onlyAdmin onlyBeforePresaleStart {
         if (_priceFeed == address(0)) revert InvalidAddress();
         bnbUsdPriceFeed = ChainlinkPriceFeed(_priceFeed);
-    }
-
-    /**
-     * @notice Get current BNB/USD price from Chainlink
-     * @return price BNB/USD price with 8 decimals
-     */
-    function getBnbUsdPrice() external view returns (uint256 price) {
-        (, int256 bnbUsdPrice, , , ) = bnbUsdPriceFeed.latestRoundData();
-        if (bnbUsdPrice <= 0) revert InvalidPrice();
-        return uint256(bnbUsdPrice);
     }
 
     /**
@@ -381,9 +391,8 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
      * @notice Can only withdraw after presale ends and only unsold tokens (balance - totalMTXSold)
      * @param to Address to send MTX tokens to
      */
-    function withdrawMTXTokens(address to) external override onlyAdmin {
+    function withdrawMTXTokens(address to) external override onlyAdmin onlyAfterPresaleEnd {
         if (to == address(0)) revert InvalidAddress();
-        if (block.timestamp < presaleEndTime) revert PresaleNotEnded();
 
         uint256 balance = mtxToken.balanceOf(address(this));
 
@@ -455,13 +464,13 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
      * @notice Receive function to accept BNB
      */
     receive() external payable {
-        revert("Use buyTokens() function");
+        revert("Use buyExactBNB or buyExactMTX");
     }
 
     /**
      * @notice Fallback function
      */
     fallback() external payable {
-        revert("Use buyTokens() function");
+        revert("Use buyExactBNB or buyExactMTX");
     }
 }

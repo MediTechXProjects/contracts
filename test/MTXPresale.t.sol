@@ -26,10 +26,9 @@ contract MTXPresaleTest is Test {
 
     uint256 public constant PRICE_SIX_MONTHS = 0.05e18; // 0.05 USDT per MTX
     uint256 public constant PRICE_THREE_MONTHS = 0.06e18; // 0.06 USDT per MTX
-    uint256 public constant PRICE_TWENTY_DAYS = 0.1e18; // 0.1 USDT per MTX
+    uint256 public constant PRICE_MONTHLY_VESTING = 0.1e18; // 0.1 USDT per MTX
     uint256 public constant BNB_PRICE_USD = 300e8; // $300 per BNB (8 decimals)
     uint256 public constant MONTH = 30 days;
-    uint256 public constant DAY_20 = 20 days;
 
     uint256 public presaleStartTime;
     uint256 public presaleEndTime;
@@ -81,7 +80,7 @@ contract MTXPresaleTest is Test {
             presaleEndTime,
             PRICE_SIX_MONTHS,
             PRICE_THREE_MONTHS,
-            PRICE_TWENTY_DAYS
+            PRICE_MONTHLY_VESTING
         );
         
         vm.prank(manager);
@@ -112,7 +111,7 @@ contract MTXPresaleTest is Test {
         assertEq(presale.presaleEndTime(), presaleEndTime);
         assertEq(presale.getPrice(IMTXPresale.LockModelType.SIX_MONTH_LOCK), PRICE_SIX_MONTHS);
         assertEq(presale.getPrice(IMTXPresale.LockModelType.HALF_3M_HALF_6M), PRICE_THREE_MONTHS);
-        assertEq(presale.getPrice(IMTXPresale.LockModelType.TWENTY_DAY_VESTING), PRICE_TWENTY_DAYS);
+        assertEq(presale.getPrice(IMTXPresale.LockModelType.MONTHLY_VESTING), PRICE_MONTHLY_VESTING);
         assertEq(presale.maxMTXSold(), 50_000_000 * 10**18);
     }
 
@@ -126,7 +125,7 @@ contract MTXPresaleTest is Test {
             presaleEndTime,
             PRICE_SIX_MONTHS,
             PRICE_THREE_MONTHS,
-            PRICE_TWENTY_DAYS
+            PRICE_MONTHLY_VESTING
         );
     }
 
@@ -140,7 +139,7 @@ contract MTXPresaleTest is Test {
             presaleStartTime, // end before start
             PRICE_SIX_MONTHS,
             PRICE_THREE_MONTHS,
-            PRICE_TWENTY_DAYS
+            PRICE_MONTHLY_VESTING
         );
     }
 
@@ -154,7 +153,7 @@ contract MTXPresaleTest is Test {
             presaleEndTime,
             0, // zero price
             PRICE_THREE_MONTHS,
-            PRICE_TWENTY_DAYS
+            PRICE_MONTHLY_VESTING
         );
     }
 
@@ -228,9 +227,9 @@ contract MTXPresaleTest is Test {
             buyer3,
             1 ether,
             3000 * 10**18,
-            IMTXPresale.LockModelType.TWENTY_DAY_VESTING
+            IMTXPresale.LockModelType.MONTHLY_VESTING
         );
-        presale.buyExactBNB{value: bnbAmount}(IMTXPresale.LockModelType.TWENTY_DAY_VESTING);
+        presale.buyExactBNB{value: bnbAmount}(IMTXPresale.LockModelType.MONTHLY_VESTING);
         presale.userTotalPurchased(buyer3);
 
         assertEq(presale.totalBNBCollected(), 3 ether);
@@ -255,7 +254,7 @@ contract MTXPresaleTest is Test {
 
         purchases = presale.getUserPurchases(buyer3);
         assertEq(purchases.length, 1);
-        assertEq(uint256(purchases[0].model), uint256(IMTXPresale.LockModelType.TWENTY_DAY_VESTING));
+        assertEq(uint256(purchases[0].model), uint256(IMTXPresale.LockModelType.MONTHLY_VESTING));
         assertEq(purchases[0].mtxAmount, 3000 * 10**18);
         assertEq(purchases[0].claimedAmount, 0);
     }
@@ -293,9 +292,9 @@ contract MTXPresaleTest is Test {
             buyer1,
             1 ether,
             3000 * 10**18,
-            IMTXPresale.LockModelType.TWENTY_DAY_VESTING
+            IMTXPresale.LockModelType.MONTHLY_VESTING
         );
-        presale.buyExactBNB{value: bnbAmount}(IMTXPresale.LockModelType.TWENTY_DAY_VESTING);
+        presale.buyExactBNB{value: bnbAmount}(IMTXPresale.LockModelType.MONTHLY_VESTING);
 
         // Verify totals
         assertEq(presale.userTotalPurchased(buyer1), 14000 * 10**18); // 6000 + 5000 + 3000
@@ -320,9 +319,11 @@ contract MTXPresaleTest is Test {
         assertEq(purchases[1].claimedAmount, 0);
         
         // Check third purchase (TWENTY_DAY_VESTING)
-        assertEq(uint256(purchases[2].model), uint256(IMTXPresale.LockModelType.TWENTY_DAY_VESTING));
+        assertEq(uint256(purchases[2].model), uint256(IMTXPresale.LockModelType.MONTHLY_VESTING));
         assertEq(purchases[2].mtxAmount, 3000 * 10**18);
         assertEq(purchases[2].claimedAmount, 0);
+
+        assertEq(presale.getUserLockedBalance(buyer1), 14000 * 10**18);
     }
 
     function testBuyExactBNBSameModelThreeTimes() public {
@@ -522,7 +523,7 @@ contract MTXPresaleTest is Test {
         assertEq(secondPurchase, mtxWanted * 2); // 1000 + 1000
 
         // Buy with TWENTY_DAY_VESTING
-        uint256 usdRequired3 = (mtxWanted * PRICE_TWENTY_DAYS) / 1e18;
+        uint256 usdRequired3 = (mtxWanted * PRICE_MONTHLY_VESTING) / 1e18;
         uint256 bnbRequired3 = (usdRequired3 * 1e8) / BNB_PRICE_USD;
         
         vm.prank(buyer1);
@@ -531,9 +532,9 @@ contract MTXPresaleTest is Test {
             buyer1,
             bnbRequired3,
             mtxWanted,
-            IMTXPresale.LockModelType.TWENTY_DAY_VESTING
+            IMTXPresale.LockModelType.MONTHLY_VESTING
         );
-        presale.buyExactMTX{value: 1 ether}(mtxWanted, IMTXPresale.LockModelType.TWENTY_DAY_VESTING);
+        presale.buyExactMTX{value: 1 ether}(mtxWanted, IMTXPresale.LockModelType.MONTHLY_VESTING);
         
         uint256 thirdPurchase = presale.userTotalPurchased(buyer1);
         assertEq(thirdPurchase, mtxWanted * 3); // 1000 + 1000 + 1000
@@ -562,7 +563,7 @@ contract MTXPresaleTest is Test {
         assertEq(purchases[1].claimedAmount, 0);
         
         // Check third purchase (TWENTY_DAY_VESTING)
-        assertEq(uint256(purchases[2].model), uint256(IMTXPresale.LockModelType.TWENTY_DAY_VESTING));
+        assertEq(uint256(purchases[2].model), uint256(IMTXPresale.LockModelType.MONTHLY_VESTING));
         assertEq(purchases[2].mtxAmount, mtxWanted);
         assertEq(purchases[2].claimedAmount, 0);
     }
@@ -687,9 +688,10 @@ contract MTXPresaleTest is Test {
 
         // Buy tokens
         vm.prank(buyer1);
-        presale.buyExactBNB{value: bnbAmount}(IMTXPresale.LockModelType.TWENTY_DAY_VESTING);
+        presale.buyExactBNB{value: bnbAmount}(IMTXPresale.LockModelType.MONTHLY_VESTING);
 
         vm.warp(presaleEndTime - 1);
+        
         vm.prank(buyer1);
         vm.expectRevert(IMTXPresale.NoTokensToClaim.selector);
         presale.claimTokens();
@@ -701,7 +703,7 @@ contract MTXPresaleTest is Test {
         emit IMTXPresale.TokensClaimed(
             buyer1,
             600 * 10**18,
-            IMTXPresale.LockModelType.TWENTY_DAY_VESTING
+            IMTXPresale.LockModelType.MONTHLY_VESTING
         );
         presale.claimTokens();
 
@@ -712,44 +714,69 @@ contract MTXPresaleTest is Test {
 
         IMTXPresale.Purchase[] memory purchases = presale.getUserPurchases(buyer1);
         assertEq(purchases.length, 1);
-        assertEq(uint256(purchases[0].model), uint256(IMTXPresale.LockModelType.TWENTY_DAY_VESTING));
+        assertEq(uint256(purchases[0].model), uint256(IMTXPresale.LockModelType.MONTHLY_VESTING));
         assertEq(purchases[0].mtxAmount, 3000 * 10**18);
         assertEq(purchases[0].claimedAmount, 600 * 10**18);
 
-
         // Claim second 20% after 20 days
-        vm.warp(presaleEndTime + DAY_20 + 1);
-        vm.prank(buyer1);
-        vm.expectEmit(true, false, false, true);
-        emit IMTXPresale.TokensClaimed(
-            buyer1,
-            600 * 10**18,
-            IMTXPresale.LockModelType.TWENTY_DAY_VESTING
-        );
-        presale.claimTokens();
-        assertEq(presale.getUserClaimedBalance(buyer1), 1200 * 10**18);
-        assertEq(mtxToken.balanceOf(buyer1), 1200 * 10**18);
+        vm.warp(presaleEndTime + 33 days);
 
-        purchases = presale.getUserPurchases(buyer1);
-        assertEq(purchases.length, 1);
-        assertEq(uint256(purchases[0].model), uint256(IMTXPresale.LockModelType.TWENTY_DAY_VESTING));
-        assertEq(purchases[0].mtxAmount, 3000 * 10**18);
-        assertEq(purchases[0].claimedAmount, 1200 * 10**18);
-
-        vm.warp(presaleEndTime + DAY_20 + 19 days);
         vm.prank(buyer1);
         vm.expectRevert(IMTXPresale.NoTokensToClaim.selector);
         presale.claimTokens();
 
 
-        vm.warp(presaleEndTime + 5 * DAY_20 + 1);
+        vm.warp(presaleEndTime + 35 days + 1);
+
+        vm.prank(buyer1);
         vm.expectEmit(true, false, false, true);
         emit IMTXPresale.TokensClaimed(
             buyer1,
-            1800 * 10**18,
-            IMTXPresale.LockModelType.TWENTY_DAY_VESTING
+            480 * 10**18,
+            IMTXPresale.LockModelType.MONTHLY_VESTING
         );
+        presale.claimTokens();
+        assertEq(presale.getUserClaimedBalance(buyer1), 1080 * 10**18);
+        assertEq(mtxToken.balanceOf(buyer1), 1080 * 10**18);
+
+        purchases = presale.getUserPurchases(buyer1);
+        assertEq(purchases.length, 1);
+        assertEq(uint256(purchases[0].model), uint256(IMTXPresale.LockModelType.MONTHLY_VESTING));
+        assertEq(purchases[0].mtxAmount, 3000 * 10**18);
+        assertEq(purchases[0].claimedAmount, 1080 * 10**18);
+
+        vm.warp(presaleEndTime + 35 days + 1 * MONTH + 1);
+
         vm.prank(buyer1);
+        vm.expectEmit(true, false, false, true);
+        emit IMTXPresale.TokensClaimed(
+            buyer1,
+            480 * 10**18,
+            IMTXPresale.LockModelType.MONTHLY_VESTING
+        );
+        presale.claimTokens();
+        
+        assertEq(presale.getUserClaimedBalance(buyer1), 1560 * 10**18);
+        assertEq(mtxToken.balanceOf(buyer1), 1560 * 10**18);
+        assertEq(address(presale).balance, 1 ether);
+        assertEq(mtxToken.balanceOf(address(presale)), (50_000_000 - 1560) * 10**18);
+
+        purchases = presale.getUserPurchases(buyer1);
+        assertEq(purchases.length, 1);
+        assertEq(uint256(purchases[0].model), uint256(IMTXPresale.LockModelType.MONTHLY_VESTING));
+        assertEq(purchases[0].mtxAmount, 3000 * 10**18);
+        assertEq(purchases[0].claimedAmount, 1560 * 10**18);
+
+
+        vm.warp(presaleEndTime + 35 days + 4 * MONTH + 1);
+
+        vm.prank(buyer1);
+        vm.expectEmit(true, false, false, true);
+        emit IMTXPresale.TokensClaimed(
+            buyer1,
+            1440 * 10**18,
+            IMTXPresale.LockModelType.MONTHLY_VESTING
+        );
         presale.claimTokens();
         assertEq(presale.getUserClaimedBalance(buyer1), 3000 * 10**18);
         assertEq(mtxToken.balanceOf(buyer1), 3000 * 10**18);
@@ -758,7 +785,7 @@ contract MTXPresaleTest is Test {
 
         purchases = presale.getUserPurchases(buyer1);
         assertEq(purchases.length, 1);
-        assertEq(uint256(purchases[0].model), uint256(IMTXPresale.LockModelType.TWENTY_DAY_VESTING));
+        assertEq(uint256(purchases[0].model), uint256(IMTXPresale.LockModelType.MONTHLY_VESTING));
         assertEq(purchases[0].mtxAmount, 3000 * 10**18);
         assertEq(purchases[0].claimedAmount, 3000 * 10**18);
     }
@@ -769,7 +796,7 @@ contract MTXPresaleTest is Test {
 
         // Buy tokens with TWENTY_DAY_VESTING model
         vm.prank(buyer1);
-        presale.buyExactBNB{value: bnbAmount}(IMTXPresale.LockModelType.TWENTY_DAY_VESTING);
+        presale.buyExactBNB{value: bnbAmount}(IMTXPresale.LockModelType.MONTHLY_VESTING);
 
         // Buy tokens with HALF_3M_HALF_6M model
         vm.prank(buyer1);
@@ -779,70 +806,55 @@ contract MTXPresaleTest is Test {
         IMTXPresale.Purchase[] memory purchases = presale.getUserPurchases(buyer1);
         assertEq(purchases.length, 2);
         
-        // Calculate expected amounts
-        // TWENTY_DAY_VESTING: 1 ether = 300 USD = 3000 MTX tokens
-        // HALF_3M_HALF_6M: 1 ether = 300 USD = 5000 MTX tokens
         uint256 expectedTwentyAmount = 3000 * 10**18;
         uint256 expectedHalfAmount = 5000 * 10**18;
         
-        // After 3 months (90 days):
-        // - TWENTY_DAY_VESTING: 90 days / 20 days = 4 periods, so 4+1 = 5 portions (100% unlocked) = 3000 MTX
-        // - HALF_3M_HALF_6M: 50% unlocked = 2500 MTX
         uint256 expectedClaimableAfter3Months = expectedTwentyAmount + (expectedHalfAmount / 2); // 3000 + 2500 = 5500
 
         // Try to claim before 3 months - should fail or claim partial
         vm.warp(presaleEndTime + 2 * MONTH + 1);
-        vm.prank(buyer1);
-        // At 2 months, TWENTY_DAY_VESTING should have some unlocked, HALF_3M_HALF_6M should have none
-        // So this should not revert, but let's check what's claimable
-        uint256 balanceBefore = mtxToken.balanceOf(buyer1);
+        
         vm.prank(buyer1);
         presale.claimTokens();
-        uint256 balanceAfter2Months = mtxToken.balanceOf(buyer1);
-        assertGt(balanceAfter2Months, balanceBefore); // Some tokens should be claimable
+
+        assertEq(presale.getUserClaimedBalance(buyer1), 1080 * 10**18);
+        assertEq(mtxToken.balanceOf(buyer1), 1080 * 10**18);
+        assertEq(address(presale).balance, 2 ether);
+        assertEq(mtxToken.balanceOf(address(presale)), (50_000_000 - 1080) * 10**18);
+
+        purchases = presale.getUserPurchases(buyer1);
+
+        assertEq(uint256(purchases[0].model), uint256(IMTXPresale.LockModelType.MONTHLY_VESTING));
+        assertEq(purchases[0].mtxAmount, 3000 * 10**18);
+        assertEq(purchases[0].claimedAmount, 1080 * 10**18);
+
+        assertEq(uint256(purchases[1].model), uint256(IMTXPresale.LockModelType.HALF_3M_HALF_6M));
+        assertEq(purchases[1].mtxAmount, 5000 * 10**18);
+        assertEq(purchases[1].claimedAmount, 0);
+
 
         // Claim after 3 months
         vm.warp(presaleEndTime + 3 * MONTH + 1);
-        uint256 balanceBefore3Months = mtxToken.balanceOf(buyer1);
-        uint256 claimedBefore3Months = presale.getUserClaimedBalance(buyer1);
+
 
         vm.prank(buyer1);
         presale.claimTokens();
 
-        uint256 balanceAfter3Months = mtxToken.balanceOf(buyer1);
-        uint256 claimedAfter3Months = presale.getUserClaimedBalance(buyer1);
-        uint256 newlyClaimed = balanceAfter3Months - balanceBefore3Months;
-
-        // Verify total claimed balance
-        assertEq(claimedAfter3Months, expectedClaimableAfter3Months);
-        assertEq(balanceAfter3Months, expectedClaimableAfter3Months);
-
-        // Verify purchase states
-        purchases = presale.getUserPurchases(buyer1);
-        assertEq(purchases.length, 2);
-        
-        // Find which purchase is which model
-        uint256 twentyIndex = 0;
-        uint256 halfIndex = 1;
-        if (uint256(purchases[0].model) == uint256(IMTXPresale.LockModelType.HALF_3M_HALF_6M)) {
-            twentyIndex = 1;
-            halfIndex = 0;
-        }
-
-        // TWENTY_DAY_VESTING should be fully claimed (3000 MTX)
-        assertEq(uint256(purchases[twentyIndex].model), uint256(IMTXPresale.LockModelType.TWENTY_DAY_VESTING));
-        assertEq(purchases[twentyIndex].mtxAmount, expectedTwentyAmount);
-        assertEq(purchases[twentyIndex].claimedAmount, expectedTwentyAmount);
-
-        // HALF_3M_HALF_6M should have 50% claimed (2500 MTX)
-        assertEq(uint256(purchases[halfIndex].model), uint256(IMTXPresale.LockModelType.HALF_3M_HALF_6M));
-        assertEq(purchases[halfIndex].mtxAmount, expectedHalfAmount);
-        assertEq(purchases[halfIndex].claimedAmount, expectedHalfAmount / 2);
-
-        // Verify contract balances
+        assertEq(presale.getUserClaimedBalance(buyer1), 4060 * 10**18);
+        assertEq(mtxToken.balanceOf(buyer1), 4060 * 10**18);
         assertEq(address(presale).balance, 2 ether);
-        assertEq(mtxToken.balanceOf(address(presale)), (50_000_000 - expectedClaimableAfter3Months) * 10**18);
-        assertEq(mtxToken.balanceOf(buyer1), expectedClaimableAfter3Months);
+        assertEq(mtxToken.balanceOf(address(presale)), (50_000_000 - 4060) * 10**18);
+
+        purchases = presale.getUserPurchases(buyer1);
+
+        assertEq(uint256(purchases[0].model), uint256(IMTXPresale.LockModelType.MONTHLY_VESTING));
+        assertEq(purchases[0].mtxAmount, 3000 * 10**18);
+        assertEq(purchases[0].claimedAmount, 1560 * 10**18);
+
+        assertEq(uint256(purchases[1].model), uint256(IMTXPresale.LockModelType.HALF_3M_HALF_6M));
+        assertEq(purchases[1].mtxAmount, 5000 * 10**18);
+        assertEq(purchases[1].claimedAmount, 2500 * 10**18);
+
 
         // Try to claim again - should revert (no more tokens to claim at 3 months)
         vm.prank(buyer1);
@@ -903,21 +915,19 @@ contract MTXPresaleTest is Test {
     function testCalculateClaimableTwentyDayVesting() public {
         vm.warp(presaleStartTime + 1 days);
         uint256 bnbAmount = 1 ether;
-        uint256 expectedUsdValue = (bnbAmount * BNB_PRICE_USD) / 1e8;
-        uint256 expectedMtxAmount = (expectedUsdValue * 1e18) / PRICE_TWENTY_DAYS;
 
         vm.prank(buyer1);
-        presale.buyExactBNB{value: bnbAmount}(IMTXPresale.LockModelType.TWENTY_DAY_VESTING);
+        presale.buyExactBNB{value: bnbAmount}(IMTXPresale.LockModelType.MONTHLY_VESTING);
 
         IMTXPresale.Purchase[] memory purchases = presale.getUserPurchases(buyer1);
 
         // At presale end - 20%
         vm.warp(presaleEndTime + 1);
-        assertEq(presale.calculateClaimable(purchases[0]), expectedMtxAmount / 5);
+        assertEq(presale.calculateClaimable(purchases[0]), 600 * 10**18);
 
         // After 40 days - 60%
-        vm.warp(presaleEndTime + 2 * DAY_20 + 1);
-        assertEq(presale.calculateClaimable(purchases[0]), (expectedMtxAmount * 3) / 5);
+        vm.warp(presaleEndTime + 2 * MONTH + 1);
+        assertEq(presale.calculateClaimable(purchases[0]), 1080 * 10**18);
     }
 
     // ============ GETUSERLOCKEDBALANCE TESTS ============
@@ -1037,7 +1047,7 @@ contract MTXPresaleTest is Test {
         presale.buyExactBNB{value: bnbAmount}(IMTXPresale.LockModelType.HALF_3M_HALF_6M);
 
         vm.prank(buyer1);
-        presale.buyExactBNB{value: bnbAmount}(IMTXPresale.LockModelType.TWENTY_DAY_VESTING);
+        presale.buyExactBNB{value: bnbAmount}(IMTXPresale.LockModelType.MONTHLY_VESTING);
 
         IMTXPresale.Purchase[] memory purchases = presale.getUserPurchases(buyer1);
         assertEq(purchases.length, 3);
@@ -1061,10 +1071,10 @@ contract MTXPresaleTest is Test {
 
     // ============ GETPRICE TESTS ============
 
-    function testGetPrice() public view {
+    function testGetPrice() public {
         assertEq(presale.getPrice(IMTXPresale.LockModelType.SIX_MONTH_LOCK), PRICE_SIX_MONTHS);
         assertEq(presale.getPrice(IMTXPresale.LockModelType.HALF_3M_HALF_6M), PRICE_THREE_MONTHS);
-        assertEq(presale.getPrice(IMTXPresale.LockModelType.TWENTY_DAY_VESTING), PRICE_TWENTY_DAYS);
+        assertEq(presale.getPrice(IMTXPresale.LockModelType.MONTHLY_VESTING), PRICE_MONTHLY_VESTING);
     }
 
     // ============ SETPRESALESTARTTIME TESTS ============
@@ -1091,6 +1101,13 @@ contract MTXPresaleTest is Test {
         presale.setPresaleStartTime(presaleEndTime); // Start >= End
     }
 
+    function testSetPresaleStartTimeRevertsWithPresaleStarted() public {
+        vm.warp(presaleStartTime + 1 days + 1);
+        vm.prank(admin);
+        vm.expectRevert(IMTXPresale.PresaleStarted.selector);
+        presale.setPresaleStartTime(presaleStartTime + 2 days); // Start < End
+    }
+
     // ============ SETPRESALEENDTIME TESTS ============
 
     function testSetPresaleEndTime() public {
@@ -1113,6 +1130,13 @@ contract MTXPresaleTest is Test {
         vm.prank(admin);
         vm.expectRevert(IMTXPresale.InvalidTime.selector);
         presale.setPresaleEndTime(presaleStartTime); // End <= Start
+    }
+
+    function testSetPresaleEndTimeRevertsWithPresaleStarted() public {
+        vm.warp(presaleStartTime + 1 days + 1);
+        vm.prank(admin);
+        vm.expectRevert(IMTXPresale.PresaleStarted.selector);
+        presale.setPresaleEndTime(presaleStartTime + 2 days); // Start < End
     }
 
     // ============ SETPRICE TESTS ============
@@ -1143,6 +1167,13 @@ contract MTXPresaleTest is Test {
         presale.setPrice(IMTXPresale.LockModelType.SIX_MONTH_LOCK, 0);
     }
 
+    function testSetPriceRevertsWithPresaleStarted() public {
+        vm.warp(presaleStartTime + 1 days + 1);
+        vm.prank(admin);
+        vm.expectRevert(IMTXPresale.PresaleStarted.selector);
+        presale.setPrice(IMTXPresale.LockModelType.SIX_MONTH_LOCK, 0.08e18);
+    }
+
     // ============ SETBNBUSDPRICEFEED TESTS ============
 
     function testSetBnbUsdPriceFeed() public {
@@ -1164,25 +1195,6 @@ contract MTXPresaleTest is Test {
         vm.prank(admin);
         vm.expectRevert(IMTXPresale.InvalidAddress.selector);
         presale.setBnbUsdPriceFeed(address(0));
-    }
-
-    // ============ GETBNBUSDPRICE TESTS ============
-
-    function testGetBnbUsdPrice() public view {
-        uint256 price = presale.getBnbUsdPrice();
-        assertEq(price, BNB_PRICE_USD);
-    }
-
-    function testGetBnbUsdPriceWithUpdatedPrice() public {
-        priceFeed.setPrice(int256(400e8));
-        uint256 price = presale.getBnbUsdPrice();
-        assertEq(price, 400e8);
-    }
-
-    function testGetBnbUsdPriceRevertsWithInvalidPrice() public {
-        priceFeed.setPrice(int256(-1));
-        vm.expectRevert(IMTXPresale.InvalidPrice.selector);
-        presale.getBnbUsdPrice();
     }
 
     // ============ SETSALELIMIT TESTS ============
@@ -1232,15 +1244,18 @@ contract MTXPresaleTest is Test {
         vm.prank(buyer1);
         presale.buyExactBNB{value: bnbAmount}(IMTXPresale.LockModelType.SIX_MONTH_LOCK);
 
+        assertEq(address(presale).balance, bnbAmount);
+
         address recipient = makeAddr("recipient");
-        uint256 balanceBefore = recipient.balance;
 
         vm.prank(admin);
         vm.expectEmit(true, false, false, true);
         emit IMTXPresale.BNBWithdrawn(recipient, bnbAmount);
         presale.withdrawBNB(recipient);
 
-        assertEq(recipient.balance, balanceBefore + bnbAmount);
+        assertEq(recipient.balance, bnbAmount);
+
+        assertEq(address(presale).balance, 0);
     }
 
     function testWithdrawBNBRevertsForNonAdmin() public {
@@ -1266,9 +1281,7 @@ contract MTXPresaleTest is Test {
 
     function testWithdrawMTXTokens() public {
         vm.warp(presaleStartTime + 1 days);
-        uint256 bnbAmount = 5 ether;
-        uint256 expectedUsdValue = (bnbAmount * BNB_PRICE_USD) / 1e8;
-        uint256 expectedMtxAmount = (expectedUsdValue * 1e18) / PRICE_SIX_MONTHS;
+        uint256 bnbAmount = 1 ether;
 
         vm.prank(buyer1);
         presale.buyExactBNB{value: bnbAmount}(IMTXPresale.LockModelType.SIX_MONTH_LOCK);
@@ -1285,14 +1298,15 @@ contract MTXPresaleTest is Test {
         // Calculate actual withdrawable amount: balance - totalMTXSold
         uint256 presaleBalance = mtxToken.balanceOf(address(presale));
         uint256 totalSold = presale.totalMTXSold();
-        uint256 withdrawableAmount = presaleBalance > totalSold ? presaleBalance - totalSold : 0;
+
+        assertEq(totalSold, 6000 * 10**18);
 
         vm.prank(admin);
         vm.expectEmit(true, false, false, true);
-        emit IMTXPresale.MTXTokensWithdrawn(recipient, withdrawableAmount);
+        emit IMTXPresale.MTXTokensWithdrawn(recipient, (60_000_000 - 6000) * 10**18);
         presale.withdrawMTXTokens(recipient);
 
-        assertEq(mtxToken.balanceOf(recipient), balanceBefore + withdrawableAmount);
+        assertEq(mtxToken.balanceOf(recipient), (60_000_000 - 6000) * 10**18);
     }
 
     function testWithdrawMTXTokensRevertsBeforePresaleEnd() public {
@@ -1320,10 +1334,6 @@ contract MTXPresaleTest is Test {
     function testWithdrawMTXTokensRevertsWithNoWithdrawableAmount() public {
         vm.warp(presaleStartTime + 1 days);
         
-        // The presale starts with 50M tokens in setUp
-        // We need to buy tokens until totalMTXSold equals or exceeds the initial balance (50M)
-        // This way, withdrawable = balance - totalMTXSold will be 0 or negative (treated as 0)
-        
         uint256 maxLimit = presale.maxMTXSold(); // 50M
         
         // Buy tokens to reach the max limit (50M tokens)
@@ -1336,24 +1346,11 @@ contract MTXPresaleTest is Test {
         vm.prank(buyer1);
         presale.buyExactMTX{value: bnbNeeded + 1 ether}(tokensToBuy, IMTXPresale.LockModelType.SIX_MONTH_LOCK);
         
-        // After buying maxMTXSold tokens, totalMTXSold should be 50M
-        // and balance should still be 50M (tokens stay in presale until claimed)
-        // So withdrawable = 50M - 50M = 0
-        
         vm.warp(presaleEndTime + 1);
         address recipient = makeAddr("recipient");
         
-        // Verify the state: balance should equal totalMTXSold (or totalMTXSold might be slightly less due to rounding)
         uint256 finalBalance = mtxToken.balanceOf(address(presale));
         uint256 finalTotalSold = presale.totalMTXSold();
-        
-        // The function calculates: withdrawableAmount = balance > totalMTXSold ? balance - totalMTXSold : 0
-        // If balance <= totalMTXSold, withdrawableAmount = 0, and it should revert
-        // Since we bought maxMTXSold (50M) and balance is 50M, they should be equal (or very close)
-        
-        // If there's a tiny difference due to rounding, we might need to handle it
-        // But in practice, if we buy exactly maxMTXSold, totalMTXSold should equal maxMTXSold
-        // and balance should equal the initial 50M, so they should match
         
         vm.prank(admin);
         vm.expectRevert(IMTXPresale.InvalidAmount.selector);
