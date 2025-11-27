@@ -10,7 +10,7 @@ contract AddWhitelist is Script {
 
         // Addresses to add to whitelist
         address[] memory addressesToWhitelist = new address[](1);
-        addressesToWhitelist[0] = 0xB8ac0b0b9422718A382786d7b237b3011ae99F4b; // Replace with actual address
+        addressesToWhitelist[0] = 0xDcC7cEd9a0af57bDe46c5Fb5dcE0163c23Fc2e86; // Replace with actual address
 
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
 

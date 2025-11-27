@@ -50,7 +50,7 @@ interface IMTXPresale {
     function buyExactBNB(LockModelType model) external payable;
     function buyExactMTX(uint256 mtxWanted, LockModelType model) external payable;
     function claimTokens() external;
-    function calculateClaimable(Purchase memory purchase) external view returns (uint256);
+    function calculateClaimable(Purchase memory purchase) external view virtual returns (uint256);
     function getUserLockedBalance(address user) external view returns (uint256);
     function getUserClaimedBalance(address user) external view returns (uint256);
     function getUserTotalPurchased(address user) external view returns (uint256);

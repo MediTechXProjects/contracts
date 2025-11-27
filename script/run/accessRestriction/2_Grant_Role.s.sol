@@ -9,8 +9,8 @@ import { AccessRestriction } from "../../../src/accessRistriction/AccessRestrict
 contract GrantRole is Script {
     function run() external {
         // Get addresses from environment variables
-        address accessRestrictionAddress = 0xe6C7a461766914f114Ecb91D77B851278A51452C;
-        address userAddress = 0xe7A38d4d4D1ebc4e441f76a70AD7CE7a5D78531C;
+        address accessRestrictionAddress = 0xDA05A33a4F06056e24590e8B3832F1dD05a98443;
+        address userAddress = 0xDcC7cEd9a0af57bDe46c5Fb5dcE0163c23Fc2e86;
         
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
 
@@ -20,6 +20,7 @@ contract GrantRole is Script {
         // Grant roles - uncomment the role you want to grant
         // accessRestriction.grantRole(accessRestriction.ADMIN_ROLE(), userAddress);
         // accessRestriction.grantRole(accessRestriction.MTX_CONTRACT_ROLE(), userAddress);
+        accessRestriction.grantRole(accessRestriction.MANAGER_ROLE(), userAddress);
 
         vm.stopBroadcast();
 

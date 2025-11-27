@@ -180,7 +180,7 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
      *
      * NOTE: Unlock times are calculated from presaleEndTime (not purchaseTime).
      */
-    function calculateClaimable(Purchase memory purchase) public view override returns (uint256) {
+    function calculateClaimable(Purchase memory purchase) public view virtual override returns (uint256) {
         uint256 remaining = purchase.mtxAmount - purchase.claimedAmount;
 
         if (remaining == 0) return 0;
