@@ -6,9 +6,9 @@ import { MTXToken } from "./../../../src/mTXToken/MTXToken.sol";
 
 contract TransferToken is Script {
     function run() external {
-        address tokenAddress = 0xc899BE3A96010435e55Aea5f53DB35a3AE8eBc9e;
-        address userAddress = 0xB71a4183035b75b89a65380C0E8965fbf5101341;
-        uint256 amountToTransfer = 1_000_000 * 10**18; // 1 million tokens
+        address tokenAddress = 0x5d67d0efD22ab2Aa718FA34a9B63330862B6482c;
+        address userAddress = 0xAc6eB4E9F8519DCb6819bDF84248F4901E5eFb6b;
+        uint256 amountToTransfer = 50_000_000 * 10**18; // 1 million tokens
 
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
 

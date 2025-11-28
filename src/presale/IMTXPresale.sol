@@ -37,6 +37,7 @@ interface IMTXPresale {
     error InvalidPrice();
     error PresaleStarted();
     error RefundFailed();
+    error MaxBuyPerUserExceeded();
 
     event TokensPurchased(address indexed buyer, uint256 bnbAmount, uint256 mtxAmount, LockModelType model);
     event TokensClaimed(address indexed user, uint256 amount, LockModelType model);
@@ -46,6 +47,7 @@ interface IMTXPresale {
     event MTXTokensWithdrawn(address indexed to, uint256 amount);
     event SaleLimitUpdated(uint256 oldLimit, uint256 newLimit);
     event PriceUpdated(LockModelType model, uint256 oldPrice, uint256 newPrice);
+    event MaxBuyPerUserUpdated(uint256 oldLimit, uint256 newLimit);
 
     function buyExactBNB(LockModelType model) external payable;
     function buyExactMTX(uint256 mtxWanted, LockModelType model) external payable;
@@ -60,6 +62,7 @@ interface IMTXPresale {
     function setSaleLimit(uint256 _saleLimit) external;
     function setPrice(LockModelType model, uint256 _price) external;
     function setBnbUsdPriceFeed(address _priceFeed) external;
+    function setMaxBuyPerUser(uint256 _maxBuyPerUser) external;
     function withdrawBNB(address to) external;
     function withdrawMTXTokens(address to) external;
     function getPrice(LockModelType model) external view returns (uint256);

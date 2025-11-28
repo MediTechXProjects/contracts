@@ -24,6 +24,7 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
     uint256 public totalBNBCollected;
     uint256 public totalMTXSold;
     uint256 public maxMTXSold = 50_000_000 * 10**18;
+    uint256 public maxBuyPerUser = 10_000_000 * 10**18;
     // Time constants
     uint256 public constant MONTH = 30 days;
     /**
@@ -358,6 +359,19 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
     }
 
     /**
+     * @notice Set maximum buy limit per user (admin only)
+     * @param _maxBuyPerUser Maximum amount of MTX tokens a user can buy
+     */
+    function setMaxBuyPerUser(uint256 _maxBuyPerUser) external override onlyAdmin onlyBeforePresaleStart {
+        if (_maxBuyPerUser == 0) revert InvalidAmount();
+
+        uint256 oldLimit = maxBuyPerUser;
+        maxBuyPerUser = _maxBuyPerUser;
+
+        emit MaxBuyPerUserUpdated(oldLimit, _maxBuyPerUser);
+    }
+
+    /**
      * @notice Set sale limit for MTX tokens (admin only)
      * @param _saleLimit Maximum amount of MTX tokens that can be sold
      */
@@ -431,6 +445,8 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
         LockModelType model
     ) private {
         if (totalMTXSold + mtxAmount > maxMTXSold) revert SaleLimitExceeded();
+        
+        if (userTotalPurchased[user] + mtxAmount > maxBuyPerUser) revert MaxBuyPerUserExceeded();
 
         Purchase[] storage purchases = userPurchases[user];
 

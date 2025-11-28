@@ -1235,6 +1235,233 @@ contract MTXPresaleTest is Test {
         presale.setSaleLimit(expectedMtxAmount - 1); // Less than total sold
     }
 
+    // ============ SETMAXBUYPERUSER TESTS ============
+
+    function testSetMaxBuyPerUser() public {
+        uint256 newLimit = 20_000_000 * 10**18;
+        vm.prank(admin);
+        vm.expectEmit(false, false, false, true);
+        emit IMTXPresale.MaxBuyPerUserUpdated(10_000_000 * 10**18, newLimit);
+        presale.setMaxBuyPerUser(newLimit);
+
+        assertEq(presale.maxBuyPerUser(), newLimit);
+    }
+
+    function testSetMaxBuyPerUserRevertsForNonAdmin() public {
+        vm.prank(buyer1);
+        vm.expectRevert(IMTXPresale.CallerNotAdmin.selector);
+        presale.setMaxBuyPerUser(20_000_000 * 10**18);
+    }
+
+    function testSetMaxBuyPerUserRevertsWithZero() public {
+        vm.prank(admin);
+        vm.expectRevert(IMTXPresale.InvalidAmount.selector);
+        presale.setMaxBuyPerUser(0);
+    }
+
+    function testSetMaxBuyPerUserRevertsWithPresaleStarted() public {
+        vm.warp(presaleStartTime + 1 days + 1);
+        vm.prank(admin);
+        vm.expectRevert(IMTXPresale.PresaleStarted.selector);
+        presale.setMaxBuyPerUser(20_000_000 * 10**18);
+    }
+
+    function testConstructorSetsDefaultMaxBuyPerUser() public view {
+        assertEq(presale.maxBuyPerUser(), 10_000_000 * 10**18);
+    }
+
+    // ============ MAXBUYPERUSER REVERT TESTS ============
+
+    function testBuyExactBNBRevertsWhenMaxBuyPerUserExceeded() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        // Calculate BNB needed to buy exactly 10M tokens (the max limit)
+        uint256 maxTokens = 10_000_000 * 10**18;
+        uint256 usdNeeded = (maxTokens * PRICE_SIX_MONTHS) / 1e18;
+        uint256 bnbNeeded = (usdNeeded * 1e8) / BNB_PRICE_USD;
+        
+        vm.deal(buyer1, bnbNeeded + 1 ether);
+
+        // First buy: buy exactly at the limit (should succeed)
+        vm.prank(buyer1);
+        
+        presale.buyExactMTX{value: bnbNeeded + 1 ether}(maxTokens, IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+        
+        assertEq(presale.userTotalPurchased(buyer1), maxTokens);
+        
+        // Second buy: try to buy even 1 more token (should revert)
+        uint256 oneMoreToken = 1 * 10**18;
+        uint256 usdNeeded2 = (oneMoreToken * PRICE_SIX_MONTHS) / 1e18;
+        uint256 bnbNeeded2 = (usdNeeded2 * 1e8) / BNB_PRICE_USD;
+
+        vm.deal(buyer1, bnbNeeded2 + 1 ether);
+        
+        vm.prank(buyer1);
+        vm.expectRevert(IMTXPresale.MaxBuyPerUserExceeded.selector);
+        presale.buyExactBNB{value: bnbNeeded2 + 1 ether}(IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+    }
+
+    function testBuyExactMTXRevertsWhenMaxBuyPerUserExceeded() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        // Calculate BNB needed to buy exactly 10M tokens (the max limit)
+        uint256 maxTokens = 10_000_000 * 10**18;
+        uint256 usdNeeded = (maxTokens * PRICE_SIX_MONTHS) / 1e18;
+        uint256 bnbNeeded = (usdNeeded * 1e8) / BNB_PRICE_USD;
+
+
+        vm.deal(buyer1, bnbNeeded + 1 ether);
+        // First buy: buy exactly at the limit (should succeed)
+        vm.prank(buyer1);
+        presale.buyExactMTX{value: bnbNeeded + 1 ether}(maxTokens, IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+        
+        assertEq(presale.userTotalPurchased(buyer1), maxTokens);
+        
+        // Second buy: try to buy even 1 more token (should revert)
+        uint256 oneMoreToken = 1 * 10**18;
+        uint256 usdNeeded2 = (oneMoreToken * PRICE_SIX_MONTHS) / 1e18;
+        uint256 bnbNeeded2 = (usdNeeded2 * 1e8) / BNB_PRICE_USD;
+
+        vm.deal(buyer1, bnbNeeded2 + 1 ether);
+        
+        vm.prank(buyer1);
+        vm.expectRevert(IMTXPresale.MaxBuyPerUserExceeded.selector);
+        presale.buyExactMTX{value: bnbNeeded2 + 1 ether}(oneMoreToken, IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+    }
+
+    function testBuyExactBNBRevertsWhenSinglePurchaseExceedsMaxBuyPerUser() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        // Try to buy more than 10M tokens in a single purchase
+        uint256 tokensToBuy = 10_000_001 * 10**18; // 1 token over the limit
+        uint256 usdNeeded = (tokensToBuy * PRICE_SIX_MONTHS) / 1e18;
+        uint256 bnbNeeded = (usdNeeded * 1e8) / BNB_PRICE_USD;
+
+
+        vm.deal(buyer1, bnbNeeded + 1 ether);
+
+        vm.prank(buyer1);
+        vm.expectRevert(IMTXPresale.MaxBuyPerUserExceeded.selector);
+        presale.buyExactMTX{value: bnbNeeded + 1 ether}(tokensToBuy, IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+    }
+
+    function testBuyExactBNBAllowsBuyingExactlyAtMaxBuyPerUser() public {
+        vm.warp(presaleStartTime + 1 days);
+
+        // Buy exactly at the max limit (should succeed)
+        uint256 maxTokens = 10_000_000 * 10**18;
+        uint256 usdNeeded = (maxTokens * PRICE_SIX_MONTHS) / 1e18;
+        uint256 bnbNeeded = (usdNeeded * 1e8) / BNB_PRICE_USD;
+
+        vm.deal(buyer1, bnbNeeded + 1 ether);
+        
+        vm.prank(buyer1);
+        presale.buyExactMTX{value: bnbNeeded + 1 ether}(maxTokens, IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+        
+        assertEq(presale.userTotalPurchased(buyer1), maxTokens);
+    }
+
+    function testBuyExactBNBAllowsMultiplePurchasesUpToMaxBuyPerUser() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        // Buy 5M tokens first
+        uint256 firstBuy = 5_000_000 * 10**18;
+        uint256 usdNeeded1 = (firstBuy * PRICE_SIX_MONTHS) / 1e18;
+        uint256 bnbNeeded1 = (usdNeeded1 * 1e8) / BNB_PRICE_USD;
+
+        vm.deal(buyer1, bnbNeeded1 + 1 ether);
+        
+        vm.prank(buyer1);
+        presale.buyExactMTX{value: bnbNeeded1 + 1 ether}(firstBuy, IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+        
+        assertEq(presale.userTotalPurchased(buyer1), firstBuy);
+        
+        // Buy another 5M tokens (should succeed, total = 10M)
+        uint256 secondBuy = 5_000_000 * 10**18;
+        uint256 usdNeeded2 = (secondBuy * PRICE_THREE_MONTHS) / 1e18;
+        uint256 bnbNeeded2 = (usdNeeded2 * 1e8) / BNB_PRICE_USD;
+
+        vm.deal(buyer1, bnbNeeded2 + 1 ether);
+        
+        vm.prank(buyer1);
+        presale.buyExactMTX{value: bnbNeeded2 + 1 ether}(secondBuy, IMTXPresale.LockModelType.HALF_3M_HALF_6M);
+        
+        assertEq(presale.userTotalPurchased(buyer1), 10_000_000 * 10**18);
+        
+        // Try to buy even 1 more token (should revert)
+        uint256 oneMoreToken = 1 * 10**18;
+        uint256 usdNeeded3 = (oneMoreToken * PRICE_SIX_MONTHS) / 1e18;
+        uint256 bnbNeeded3 = (usdNeeded3 * 1e8) / BNB_PRICE_USD;
+
+        vm.deal(buyer1, bnbNeeded3 + 1 ether);
+        
+        vm.prank(buyer1);
+        vm.expectRevert(IMTXPresale.MaxBuyPerUserExceeded.selector);
+        presale.buyExactBNB{value: bnbNeeded3 + 1 ether}(IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+    }
+
+    function testBuyExactBNBWithDifferentModelsRespectsMaxBuyPerUser() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        // Buy 5M tokens with SIX_MONTH_LOCK
+        uint256 firstBuy = 5_000_000 * 10**18;
+        uint256 usdNeeded1 = (firstBuy * PRICE_SIX_MONTHS) / 1e18;
+        uint256 bnbNeeded1 = (usdNeeded1 * 1e8) / BNB_PRICE_USD;
+
+        vm.deal(buyer1, bnbNeeded1 + 1 ether);
+        
+        vm.prank(buyer1);
+        presale.buyExactMTX{value: bnbNeeded1 + 1 ether}(firstBuy, IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+        
+        // Buy 4M tokens with HALF_3M_HALF_6M (total = 9M, should succeed)
+        uint256 secondBuy = 4_000_000 * 10**18;
+        uint256 usdNeeded2 = (secondBuy * PRICE_THREE_MONTHS) / 1e18;
+        uint256 bnbNeeded2 = (usdNeeded2 * 1e8) / BNB_PRICE_USD;
+
+        vm.deal(buyer1, bnbNeeded2 + 1 ether);
+        
+        vm.prank(buyer1);
+        presale.buyExactMTX{value: bnbNeeded2 + 1 ether}(secondBuy, IMTXPresale.LockModelType.HALF_3M_HALF_6M);
+        
+        assertEq(presale.userTotalPurchased(buyer1), 9_000_000 * 10**18);
+        
+        // Try to buy 2M more tokens (would exceed 10M limit, should revert)
+        uint256 thirdBuy = 2_000_000 * 10**18;
+        uint256 usdNeeded3 = (thirdBuy * PRICE_MONTHLY_VESTING) / 1e18;
+        uint256 bnbNeeded3 = (usdNeeded3 * 1e8) / BNB_PRICE_USD;
+
+        vm.deal(buyer1, bnbNeeded3 + 1 ether);
+        
+        vm.prank(buyer1);
+        vm.expectRevert(IMTXPresale.MaxBuyPerUserExceeded.selector);
+        presale.buyExactMTX{value: bnbNeeded3 + 1 ether}(thirdBuy, IMTXPresale.LockModelType.MONTHLY_VESTING);
+    }
+
+    function testMaxBuyPerUserIsPerUserNotGlobal() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        // Buyer1 buys 10M tokens (should succeed)
+        uint256 maxTokens = 10_000_000 * 10**18;
+        uint256 usdNeeded = (maxTokens * PRICE_SIX_MONTHS) / 1e18;
+        uint256 bnbNeeded = (usdNeeded * 1e8) / BNB_PRICE_USD;
+        
+        vm.deal(buyer1, bnbNeeded + 1 ether);
+
+        vm.prank(buyer1);
+        presale.buyExactMTX{value: bnbNeeded + 1 ether}(maxTokens, IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+        
+        assertEq(presale.userTotalPurchased(buyer1), maxTokens);
+
+        vm.deal(buyer2, bnbNeeded + 1 ether);
+        
+        // Buyer2 should also be able to buy 10M tokens (limit is per user)
+        vm.prank(buyer2);
+        presale.buyExactMTX{value: bnbNeeded + 1 ether}(maxTokens, IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+        
+        assertEq(presale.userTotalPurchased(buyer2), maxTokens);
+        assertEq(presale.totalMTXSold(), maxTokens * 2); // Both users bought
+    }
+
     // ============ WITHDRAWBNB TESTS ============
 
     function testWithdrawBNB() public {
@@ -1332,6 +1559,10 @@ contract MTXPresaleTest is Test {
     }
 
     function testWithdrawMTXTokensRevertsWithNoWithdrawableAmount() public {
+
+        vm.prank(admin);
+        presale.setMaxBuyPerUser(50_000_000 * 10**18);
+
         vm.warp(presaleStartTime + 1 days);
         
         uint256 maxLimit = presale.maxMTXSold(); // 50M
