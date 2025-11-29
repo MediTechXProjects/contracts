@@ -32,6 +32,7 @@ contract MTXPresaleTest is Test {
 
     uint256 public presaleStartTime;
     uint256 public presaleEndTime;
+    uint256 public listingTime;
 
     function setUp() public {
         admin = makeAddr("admin");
@@ -43,6 +44,7 @@ contract MTXPresaleTest is Test {
 
         // Set up time
         presaleStartTime = block.timestamp + 1 days;
+        listingTime = presaleStartTime + 30 days;
         presaleEndTime = presaleStartTime + 30 days;
 
         // Deploy AccessRestriction
@@ -78,6 +80,7 @@ contract MTXPresaleTest is Test {
             address(priceFeed),
             presaleStartTime,
             presaleEndTime,
+            listingTime,
             PRICE_SIX_MONTHS,
             PRICE_THREE_MONTHS,
             PRICE_MONTHLY_VESTING
@@ -109,10 +112,12 @@ contract MTXPresaleTest is Test {
         assertEq(address(presale.bnbUsdPriceFeed()), address(priceFeed));
         assertEq(presale.presaleStartTime(), presaleStartTime);
         assertEq(presale.presaleEndTime(), presaleEndTime);
+        assertEq(presale.listingTime(), listingTime);
         assertEq(presale.getPrice(IMTXPresale.LockModelType.SIX_MONTH_LOCK), PRICE_SIX_MONTHS);
         assertEq(presale.getPrice(IMTXPresale.LockModelType.HALF_3M_HALF_6M), PRICE_THREE_MONTHS);
         assertEq(presale.getPrice(IMTXPresale.LockModelType.MONTHLY_VESTING), PRICE_MONTHLY_VESTING);
         assertEq(presale.maxMTXSold(), 50_000_000 * 10**18);
+        assertFalse(presale.buyDisabled());
     }
 
     function testConstructorRevertsWithZeroAddress() public {
@@ -123,6 +128,7 @@ contract MTXPresaleTest is Test {
             address(priceFeed),
             presaleStartTime,
             presaleEndTime,
+            listingTime,
             PRICE_SIX_MONTHS,
             PRICE_THREE_MONTHS,
             PRICE_MONTHLY_VESTING
@@ -137,6 +143,7 @@ contract MTXPresaleTest is Test {
             address(priceFeed),
             presaleEndTime,
             presaleStartTime, // end before start
+            listingTime,
             PRICE_SIX_MONTHS,
             PRICE_THREE_MONTHS,
             PRICE_MONTHLY_VESTING
@@ -151,6 +158,7 @@ contract MTXPresaleTest is Test {
             address(priceFeed),
             presaleStartTime,
             presaleEndTime,
+            listingTime,
             0, // zero price
             PRICE_THREE_MONTHS,
             PRICE_MONTHLY_VESTING
@@ -1675,6 +1683,279 @@ contract MTXPresaleTest is Test {
         vm.prank(buyer1);
         vm.expectRevert(IMTXPresale.InvalidPrice.selector);
         presale.buyExactBNB{value: 1 ether}(IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+    }
+
+    // ============ LISTING TIME TESTS ============
+
+    function testListingTimeDifferentFromPresaleEnd() public {
+        // Set listing time to be 15 days after presale end
+        uint256 newListingTime = presaleEndTime + 15 days;
+        
+        vm.prank(admin);
+        presale.setListingTime(newListingTime);
+        
+        assertEq(presale.listingTime(), newListingTime);
+        assertTrue(presale.listingTime() > presale.presaleEndTime());
+    }
+
+    function testUnlockBasedOnListingTimeNotPresaleEnd() public {
+        vm.warp(presaleStartTime + 1 days);
+        uint256 bnbAmount = 1 ether;
+
+        // Buy tokens
+        vm.prank(buyer1);
+        presale.buyExactBNB{value: bnbAmount}(IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+
+        // Set listing time to be 20 days after presale end
+        uint256 newListingTime = presaleEndTime + 20 days;
+        vm.prank(admin);
+        presale.setListingTime(newListingTime);
+
+        IMTXPresale.Purchase[] memory purchases = presale.getUserPurchases(buyer1);
+        
+        // Try to claim at presaleEndTime + 6 months (should fail, listing time is later)
+        vm.warp(presaleEndTime + 6 * MONTH);
+        assertEq(presale.calculateClaimable(purchases[0]), 0);
+
+        // Try to claim at listingTime + 6 months (should succeed)
+        vm.warp(newListingTime + 6 * MONTH + 1);
+        uint256 claimable = presale.calculateClaimable(purchases[0]);
+        assertEq(claimable, 6000 * 10**18);
+    }
+
+    function testUnlockHalf3MHalf6MBasedOnListingTime() public {
+        vm.warp(presaleStartTime + 1 days);
+        uint256 bnbAmount = 1 ether;
+
+        // Buy tokens
+        vm.prank(buyer1);
+        presale.buyExactBNB{value: bnbAmount}(IMTXPresale.LockModelType.HALF_3M_HALF_6M);
+
+        // Set listing time to be 10 days after presale end
+        uint256 newListingTime = presaleEndTime - 10 days;
+        vm.prank(admin);
+        presale.setListingTime(newListingTime);
+
+        IMTXPresale.Purchase[] memory purchases = presale.getUserPurchases(buyer1);
+
+        // At listingTime + 3 months (should unlock first half)
+        vm.warp(newListingTime + 3 * MONTH + 1);
+        assertEq(presale.calculateClaimable(purchases[0]), 2500 * 10**18);
+
+        // At listingTime + 6 months (should unlock all)
+        vm.warp(newListingTime + 6 * MONTH + 1);
+        assertEq(presale.calculateClaimable(purchases[0]), 5000 * 10**18);
+    }
+
+    function testUnlockMonthlyVestingBasedOnListingTime() public {
+        vm.warp(presaleStartTime + 1 days);
+        uint256 bnbAmount = 1 ether;
+
+        // Buy tokens
+        vm.prank(buyer1);
+        presale.buyExactBNB{value: bnbAmount}(IMTXPresale.LockModelType.MONTHLY_VESTING);
+
+        // Set listing time to be 5 days after presale end
+        uint256 newListingTime = presaleEndTime + 5 days;
+        vm.prank(admin);
+        presale.setListingTime(newListingTime);
+
+        IMTXPresale.Purchase[] memory purchases = presale.getUserPurchases(buyer1);
+
+        // At presaleEndTime (should fail, listing time is later)
+        vm.warp(presaleEndTime + 1);
+        assertEq(presale.calculateClaimable(purchases[0]), 0);
+
+        // At listingTime (should unlock 20%)
+        vm.warp(newListingTime + 1);
+        assertEq(presale.calculateClaimable(purchases[0]), 600 * 10**18);
+
+        // At listingTime + 35 days (should unlock 20% + 16%)
+        vm.warp(newListingTime + 35 days + 1);
+        assertEq(presale.calculateClaimable(purchases[0]), 1080 * 10**18);
+    }
+
+    function testSetListingTimeRevertsForNonAdmin() public {
+        vm.prank(buyer1);
+        vm.expectRevert(IMTXPresale.CallerNotAdmin.selector);
+        presale.setListingTime(presaleEndTime + 10 days);
+    }
+
+    function testSetListingTimeRevertsWithZero() public {
+        vm.prank(admin);
+        vm.expectRevert(IMTXPresale.InvalidTime.selector);
+        presale.setListingTime(0);
+    }
+
+    function testSetListingTimeRevertsIfMoreThan30DaysAfterPresaleEnd() public {
+        vm.prank(admin);
+        vm.expectRevert(IMTXPresale.InvalidTime.selector);
+        presale.setListingTime(presaleEndTime + 31 days);
+    }
+
+    function testSetListingTimeSuccessfully() public {
+        uint256 newListingTime = presaleEndTime + 15 days;
+        vm.prank(admin);
+        vm.expectEmit(false, false, false, true);
+        emit IMTXPresale.ListingTimeUpdated(listingTime, newListingTime);
+        presale.setListingTime(newListingTime);
+        
+        assertEq(presale.listingTime(), newListingTime);
+    }
+
+    function testClaimTokensWithListingTimeAfterPresaleEnd() public {
+        vm.warp(presaleStartTime + 1 days);
+        uint256 bnbAmount = 1 ether;
+
+        // Buy tokens
+        vm.prank(buyer1);
+        presale.buyExactBNB{value: bnbAmount}(IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+
+        // Set listing time to be 20 days after presale end
+        uint256 newListingTime = presaleEndTime + 20 days;
+        vm.prank(admin);
+        presale.setListingTime(newListingTime);
+
+        // Try to claim before listing time + 6 months (should fail)
+        vm.warp(presaleEndTime + 6 * MONTH);
+        vm.prank(buyer1);
+        vm.expectRevert(IMTXPresale.NoTokensToClaim.selector);
+        presale.claimTokens();
+
+        // Claim after listing time + 6 months (should succeed)
+        vm.warp(newListingTime + 6 * MONTH + 1);
+        uint256 balanceBefore = mtxToken.balanceOf(buyer1);
+        
+        vm.prank(buyer1);
+        presale.claimTokens();
+        
+        assertEq(mtxToken.balanceOf(buyer1), balanceBefore + 6000 * 10**18);
+    }
+
+    // ============ BUY DISABLED TESTS ============
+
+    function testSetBuyDisabled() public {
+        assertFalse(presale.buyDisabled());
+        
+        vm.prank(admin);
+        vm.expectEmit(false, false, false, true);
+        emit IMTXPresale.BuyDisabledUpdated(true);
+        presale.setBuyDisabled(true);
+        
+        assertTrue(presale.buyDisabled());
+        
+        vm.prank(admin);
+        vm.expectEmit(false, false, false, true);
+        emit IMTXPresale.BuyDisabledUpdated(false);
+        presale.setBuyDisabled(false);
+        
+        assertFalse(presale.buyDisabled());
+    }
+
+    function testSetBuyDisabledRevertsForNonAdmin() public {
+        vm.prank(buyer1);
+        vm.expectRevert(IMTXPresale.CallerNotAdmin.selector);
+        presale.setBuyDisabled(true);
+    }
+
+    function testBuyExactBNBRevertsWhenDisabled() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        // Disable buying
+        vm.prank(admin);
+        presale.setBuyDisabled(true);
+        
+        // Try to buy
+        vm.prank(buyer1);
+        vm.expectRevert(IMTXPresale.BuyDisabled.selector);
+        presale.buyExactBNB{value: 1 ether}(IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+    }
+
+    function testBuyExactMTXRevertsWhenDisabled() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        // Disable buying
+        vm.prank(admin);
+        presale.setBuyDisabled(true);
+        
+        // Try to buy
+        vm.prank(buyer1);
+        vm.expectRevert(IMTXPresale.BuyDisabled.selector);
+        presale.buyExactMTX{value: 1 ether}(1000 * 10**18, IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+    }
+
+    function testBuyWorksAfterReenabling() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        // Disable buying
+        vm.prank(admin);
+        presale.setBuyDisabled(true);
+        
+        // Try to buy (should fail)
+        vm.prank(buyer1);
+        vm.expectRevert(IMTXPresale.BuyDisabled.selector);
+        presale.buyExactBNB{value: 1 ether}(IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+        
+        // Re-enable buying
+        vm.prank(admin);
+        presale.setBuyDisabled(false);
+        
+        // Buy should work now
+        vm.prank(buyer1);
+        presale.buyExactBNB{value: 1 ether}(IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+        
+        assertEq(presale.userTotalPurchased(buyer1), 6000 * 10**18);
+    }
+
+    function testBuyDisabledCanBeSetDuringPresale() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        // Buy some tokens first
+        vm.prank(buyer1);
+        presale.buyExactBNB{value: 1 ether}(IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+        assertEq(presale.userTotalPurchased(buyer1), 6000 * 10**18);
+        
+        // Disable buying during presale
+        vm.prank(admin);
+        presale.setBuyDisabled(true);
+        
+        // Try to buy more (should fail)
+        vm.prank(buyer2);
+        vm.expectRevert(IMTXPresale.BuyDisabled.selector);
+        presale.buyExactBNB{value: 1 ether}(IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+    }
+
+    function testListingTimeAndBuyDisabledTogether() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        // Buy tokens
+        vm.prank(buyer1);
+        presale.buyExactBNB{value: 1 ether}(IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+        
+        // Set listing time
+        uint256 newListingTime = presaleEndTime + 15 days;
+        vm.prank(admin);
+        presale.setListingTime(newListingTime);
+        
+        // Disable buying
+        vm.prank(admin);
+        presale.setBuyDisabled(true);
+        
+        // Verify both settings
+        assertEq(presale.listingTime(), newListingTime);
+        assertTrue(presale.buyDisabled());
+        
+        // Try to buy (should fail)
+        vm.prank(buyer2);
+        vm.expectRevert(IMTXPresale.BuyDisabled.selector);
+        presale.buyExactBNB{value: 1 ether}(IMTXPresale.LockModelType.SIX_MONTH_LOCK);
+        
+        // Claim should still work based on listing time
+        vm.warp(newListingTime + 6 * MONTH + 1);
+        uint256 balanceBefore = mtxToken.balanceOf(buyer1);
+        vm.prank(buyer1);
+        presale.claimTokens();
+        assertEq(mtxToken.balanceOf(buyer1), balanceBefore + 6000 * 10**18);
     }
 }
 

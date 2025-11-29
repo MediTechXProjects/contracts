@@ -13,7 +13,8 @@ contract DeployPresale is Script {
         
         uint256 presaleStartTime = block.timestamp + 2 hours;
         uint256 presaleEndTime = block.timestamp + 1 days + 2 hours;
-        
+
+        uint256 listingTime = block.timestamp + 6 hours;
 
         uint256 priceSixMonths = 0.025e18;
         uint256 priceThreeMonths = 0.03e18;
@@ -27,6 +28,7 @@ contract DeployPresale is Script {
             bnbUsdPriceFeed,
             presaleStartTime,
             presaleEndTime,
+            listingTime,
             priceSixMonths,
             priceThreeMonths,
             priceMonthlyVesting

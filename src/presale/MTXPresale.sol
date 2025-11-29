@@ -17,6 +17,7 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
 
     uint256 public presaleStartTime;
     uint256 public presaleEndTime;
+    uint256 public listingTime;
 
     mapping(address => Purchase[]) public userPurchases;
     mapping(address => uint256) public userTotalPurchased;
@@ -27,6 +28,10 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
     uint256 public maxBuyPerUser = 10_000_000 * 10**18;
     // Time constants
     uint256 public constant MONTH = 30 days;
+
+    bool public buyDisabled = false;
+
+
     /**
      * @notice Modifier to restrict access to admin role
      */
@@ -61,12 +66,18 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
         _;
     }
 
+    modifier buyEnabled() {
+        if (buyDisabled) revert BuyDisabled();
+        _;
+    }
+
     constructor(
         address _mtxToken,
         address _accessRestriction,
         address _bnbUsdPriceFeed,
         uint256 _presaleStartTime,
         uint256 _presaleEndTime,
+        uint256 _listingTime,
         uint256 _priceSixMonths,
         uint256 _priceThreeMonths,
         uint256 _priceMonthlyVesting
@@ -81,6 +92,7 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
 
         presaleStartTime = _presaleStartTime;
         presaleEndTime = _presaleEndTime;
+        listingTime = _listingTime;
 
         // Set initial prices in USDT (with 18 decimals)
         prices[LockModelType.SIX_MONTH_LOCK] = _priceSixMonths;
@@ -92,7 +104,7 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
      * @notice Buy MTX tokens with BNB
      * @param model Lock model (1, 2, or 3)
      */
-    function buyExactBNB(LockModelType model) external payable override nonReentrant notPaused onlyDuringPresale {
+    function buyExactBNB(LockModelType model) external payable override nonReentrant notPaused buyEnabled onlyDuringPresale {
 
         if (msg.value == 0) revert InvalidAmount();
 
@@ -117,6 +129,7 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
     payable
     nonReentrant
     notPaused
+    buyEnabled
     onlyDuringPresale
     {
         if (mtxWanted == 0) revert InvalidAmount();
@@ -179,9 +192,9 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
      * @param purchase The purchase to calculate claimable amount for
      * @return claimable The amount that can be claimed
      *
-     * NOTE: Unlock times are calculated from presaleEndTime (not purchaseTime).
+     * NOTE: Unlock times are calculated from listingTime.
      */
-    function calculateClaimable(Purchase memory purchase) public view virtual override returns (uint256) {
+    function calculateClaimable(Purchase memory purchase) public view virtual returns (uint256) {
         uint256 remaining = purchase.mtxAmount - purchase.claimedAmount;
 
         if (remaining == 0) return 0;
@@ -189,15 +202,15 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
         uint256 currentTime = block.timestamp;
 
         if (purchase.model == LockModelType.SIX_MONTH_LOCK) {
-            // Model 1: All tokens unlock after 6 months from presale end
-            uint256 unlockTime = presaleEndTime + (6 * MONTH);
+            // Model 1: All tokens unlock after 6 months from listing time
+            uint256 unlockTime = listingTime + (6 * MONTH);
             if (currentTime >= unlockTime) {
                 return remaining;
             }
         } else if (purchase.model == LockModelType.HALF_3M_HALF_6M) {
-            // Model 2: 50% at 3 months, 50% at 6 months (from presale end)
-            uint256 threeMonths = presaleEndTime + (3 * MONTH);
-            uint256 sixMonths = presaleEndTime + (6 * MONTH);
+            // Model 2: 50% at 3 months, 50% at 6 months (from listing time)
+            uint256 threeMonths = listingTime + (3 * MONTH);
+            uint256 sixMonths = listingTime + (6 * MONTH);
 
             uint256 firstHalf = purchase.mtxAmount / 2;
 
@@ -210,18 +223,18 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
             }
         } else if (purchase.model == LockModelType.MONTHLY_VESTING) {
 
-            if (currentTime < presaleEndTime) return 0;
+            if (currentTime < listingTime) return 0;
 
             uint256 totalUnlocked = 0;
 
             uint256 amount20 = (purchase.mtxAmount * 20) / 100;
             uint256 amount16 = (purchase.mtxAmount * 16) / 100;
 
-            // --------- Phase 1: At presale end (20%) ---------
+            // --------- Phase 1: At listing time (20%) ---------
             totalUnlocked += amount20;
 
             // --------- Phase 2: After 35 days (16%) ----------
-            uint256 t35 = presaleEndTime + 35 days;
+            uint256 t35 = listingTime + 35 days;
 
             if (currentTime >= t35) {
                 totalUnlocked += amount16;
@@ -336,6 +349,20 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
     }
 
     /**
+     * @notice Set listing time for token unlock calculations (admin only)
+     * @param _listingTime Timestamp when token is listed
+     */
+    function setListingTime(uint256 _listingTime) external override onlyAdmin {
+        if (_listingTime == 0) revert InvalidTime();
+        if (_listingTime > presaleEndTime + 30 days) revert InvalidTime();
+
+        uint256 oldTime = listingTime;
+        listingTime = _listingTime;
+
+        emit ListingTimeUpdated(oldTime, _listingTime);
+    }
+
+    /**
      * @notice Set price for a specific model (admin only)
      * @param model Lock model (1, 2, or 3)
      * @param _price New price in USDT (with 18 decimals)
@@ -418,6 +445,15 @@ contract MTXPresale is IMTXPresale, ReentrancyGuard {
         if (!success) revert TransferFailed();
 
         emit MTXTokensWithdrawn(to, withdrawableAmount);
+    }
+
+    /**
+     * @notice Set buy disabled flag (admin only)
+     * @param _disabled True to disable buying, false to enable
+     */
+    function setBuyDisabled(bool _disabled) external override onlyAdmin {
+        buyDisabled = _disabled;
+        emit BuyDisabledUpdated(_disabled);
     }
 
     /**
