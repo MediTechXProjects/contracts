@@ -40,9 +40,9 @@ interface IMTXPresale {
     error MaxBuyPerUserExceeded();
     error BuyDisabled();
 
-    event TokensPurchased(address indexed buyer, uint256 bnbAmount, uint256 mtxAmount, LockModelType model);
+    event TokensPurchased(address indexed buyer, uint256 indexed bnbAmount, uint256 indexed mtxAmount, LockModelType model);
     event BuyDisabledUpdated(bool disabled);
-    event TokensClaimed(address indexed user, uint256 amount, LockModelType model);
+    event TokensClaimed(address indexed user, uint256 indexed amount, LockModelType indexed model);
     event PresaleStartTimeUpdated(uint256 oldTime, uint256 newTime);
     event PresaleEndTimeUpdated(uint256 oldTime, uint256 newTime);
     event ListingTimeUpdated(uint256 oldTime, uint256 newTime);

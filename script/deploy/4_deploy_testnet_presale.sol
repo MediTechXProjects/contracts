@@ -12,8 +12,8 @@ contract DeployTestnetPresale is Script {
         address bnbUsdPriceFeed = vm.envAddress("BNB_USD_PRICE_FEED_ADDRESS");
         
         uint256 presaleStartTime = block.timestamp;
-        uint256 presaleEndTime = block.timestamp + 1 days + 2 hours;
-        uint256 listingTime = block.timestamp + 6 hours;
+        uint256 presaleEndTime = block.timestamp + 10 hours;
+        uint256 listingTime = block.timestamp + 4 hours;
 
         uint256 priceSixMonths = 0.025e18;
         uint256 priceThreeMonths = 0.03e18;
