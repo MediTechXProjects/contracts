@@ -11,10 +11,10 @@ contract DeployPresale is Script {
         address accessRestriction = 0xDA05A33a4F06056e24590e8B3832F1dD05a98443;
         address bnbUsdPriceFeed = vm.envAddress("BNB_USD_PRICE_FEED_ADDRESS");
         
-        uint256 presaleStartTime = block.timestamp + 2 hours;
-        uint256 presaleEndTime = block.timestamp + 1 days + 2 hours;
+        uint256 presaleStartTime = 1764579600;
+        uint256 presaleEndTime = 1765530000;
 
-        uint256 listingTime = block.timestamp + 6 hours;
+        uint256 listingTime = 1765702800;
 
         uint256 priceSixMonths = 0.025e18;
         uint256 priceThreeMonths = 0.03e18;
