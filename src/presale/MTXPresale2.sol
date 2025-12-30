@@ -7,6 +7,7 @@ import { AccessRestriction } from "../accessRistriction/AccessRestriction.sol";
 import { ChainlinkPriceFeed } from "./ChainlinkPriceFeed.sol";
 import { IMTXPresale2 } from "./IMTXPresale2.sol";
 
+
 contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
 
 
@@ -24,6 +25,7 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
 
     uint256 public totalBNBCollected;
     uint256 public totalMTXSold;
+    uint256 public totalClaimed;
 
     uint256 public maxMTXSold = 50_000_000e18;
     uint256 public maxBuyPerUser = 10_000_000e18;
@@ -67,7 +69,9 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
         address _accessRestriction,
         address _bnbUsdFeed,
         uint256 _start,
-        uint256 _end
+        uint256 _end,
+        uint256[] memory _price,
+        uint256[] memory _lockDuration
     ) {
         if (
             _mtxToken == address(0) ||
@@ -77,12 +81,18 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
 
         if (_end <= _start) revert InvalidTime();
 
+        if (_price.length != _lockDuration.length) revert InvalidAmount();
+
         mtxToken = IERC20(_mtxToken);
         accessRestriction = AccessRestriction(_accessRestriction);
         bnbUsdPriceFeed = ChainlinkPriceFeed(_bnbUsdFeed);
 
         presaleStartTime = _start;
         presaleEndTime = _end;
+
+        for (uint256 i = 0; i < _price.length; i++) {
+            _addLockModel(_price[i], _lockDuration[i]);
+        }
     }
 
 
@@ -135,6 +145,40 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
         _recordPurchase(msg.sender, mtxAmount, msg.value, model,modelId);
     }
 
+    function buyExactMTX(uint256 mtxWanted, uint256 modelId) external payable nonReentrant onlyDuringPresale buyEnabled {
+        if (mtxWanted == 0) revert InvalidAmount();
+
+        LockModel memory model = lockModels[modelId];
+
+        if (!model.active) revert InvalidModel();
+        if (model.price == 0) revert InvalidPrice();
+
+        (, int256 bnbUsd,,,) = bnbUsdPriceFeed.latestRoundData();
+
+        if (bnbUsd <= 0) revert InvalidPrice();
+
+                // USD needed for that MTX amount
+        uint256 usdRequired = (mtxWanted * model.price) / 1e18;
+
+        // BNB required (oracle has 8 decimals)
+        uint256 bnbRequired = (usdRequired * 1e8) / uint256(bnbUsd);
+
+        if (msg.value < bnbRequired) revert InsufficientBNBBalance();
+
+        _recordPurchase(msg.sender, mtxWanted, bnbRequired, model,modelId);
+    
+                        // refund extra BNB
+        uint256 refund = msg.value - bnbRequired;
+
+        if (refund > 0) {
+            (bool success, ) = payable(msg.sender).call{value: refund}("");
+            if (!success) revert RefundFailed();
+        }
+    
+    }
+
+
+
     function claim() external nonReentrant {
         Purchase[] storage purchases = userPurchases[msg.sender];
         uint256 cursor = claimCursor[msg.sender];
@@ -154,17 +198,19 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
             if (!p.claimed) {
                 p.claimed = true;
                 totalClaimable += p.amount;
-                newCursor = i;
-            }
+                newCursor = i + 1;
 
-            i++;
+                emit TokensClaimed(msg.sender, p.amount, i ,p.model);
+            }
         }
 
         claimCursor[msg.sender] = newCursor;
+        totalClaimed += totalClaimable;
 
         if (totalClaimable == 0) revert NoTokensToClaim();
 
         bool success = mtxToken.transfer(msg.sender, totalClaimable);
+        
 
         if (!success) revert TransferFailed();
     }
@@ -176,13 +222,10 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
         LockModel memory model,
         uint256 modelId
     ) internal {
-        if (mtxAmount == 0) revert InvalidAmount();
-
         if (totalMTXSold + mtxAmount > maxMTXSold) revert SaleLimitExceeded();
         
-        if (userTotalPurchased[user] + mtxAmount > maxBuyPerUser) {
-            revert MaxBuyPerUserExceeded();
-        }
+        if (userTotalPurchased[user] + mtxAmount > maxBuyPerUser) revert MaxBuyPerUserExceeded();
+        
 
         userPurchases[user].push(
             Purchase({
@@ -207,21 +250,25 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
     ) external override onlyAdmin {
         if (price == 0 || lockDuration == 0) revert InvalidAmount();
 
-        lockModels[nextModelId] = LockModel({
-            price: price,
-            lockDuration: lockDuration,
-            active: true
-        });
-
-        nextModelId = nextModelId + 1;
+        _addLockModel(price, lockDuration);
     }
 
-    function setLockModelStatus(uint256 modelId, bool active)
+    function updateLockModel(uint256 modelId, uint256 price, uint256 lockDuration, bool active)
         external
         override
-        onlyManager
+        onlyAdmin
     {
+        if (price == 0 || lockDuration == 0) revert InvalidAmount();
+
+        LockModel memory model = lockModels[modelId];
+
+        if (model.price == 0) revert InvalidPrice();
+
+        lockModels[modelId].price = price;
+        lockModels[modelId].lockDuration = lockDuration;
         lockModels[modelId].active = active;
+
+        emit LockModelAdded(modelId, price, lockDuration , active);
     }
 
     function setBuyDisabled(bool _disabled) external override onlyManager {
@@ -254,7 +301,11 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
 
         uint256 balance = mtxToken.balanceOf(address(this));
 
-        uint256 withdrawableAmount = balance > totalMTXSold ? balance - totalMTXSold : 0;
+        uint256 totalUnClaimed = totalMTXSold - totalClaimed;
+
+        if (balance <= totalUnClaimed) revert InvalidAmount();
+
+        uint256 withdrawableAmount = balance - totalUnClaimed;
 
         if (withdrawableAmount == 0) revert InvalidAmount();
 
@@ -279,6 +330,18 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
         if (cursor < total) {
             nextUnlock = userPurchases[user][cursor].unlockTime;
         }
+    }
+
+    function _addLockModel(uint256 price, uint256 lockDuration) private {
+        lockModels[nextModelId] = LockModel({
+            price: price,
+            lockDuration: lockDuration,
+            active: true
+        });
+
+        emit LockModelAdded(nextModelId, price, lockDuration , true);
+
+        nextModelId = nextModelId + 1;
     }
 
     receive() external payable {
