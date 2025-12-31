@@ -33,7 +33,7 @@ interface IMTXPresale2 {
     event PriceUpdated(uint256 model, uint256 oldPrice, uint256 newPrice);
     event MaxBuyPerUserUpdated(uint256 oldLimit, uint256 newLimit);
     event LockModelAdded(uint256 indexed modelId, uint256 indexed price, uint256 indexed lockDuration, bool active);
-
+    
     error InvalidAmount();
     error InvalidAddress();
     error InvalidTime();
@@ -53,12 +53,14 @@ interface IMTXPresale2 {
     function setSaleLimit(uint256 _saleLimit) external;
     function setPresaleEndTime(uint256 _endTime) external;
     function buyExactBNB(uint256 modelId) external payable;
-    function claim() external;
+    function buyExactMTX(uint256 mtxWanted, uint256 modelId) external payable;
+    function claim(uint256 from, uint256 to) external;
     function addLockModel(uint256 price, uint256 lockDuration) external;
-    function setLockModelStatus(uint256 modelId, bool active) external;
+    function updateLockModel(uint256 modelId, uint256 price, uint256 lockDuration, bool active) external;
+    function setMaxBuyPerUser(uint256 _maxBuyPerUser) external;
     function setBuyDisabled(bool _disabled) external;
     function withdrawBNB(address to) external;
     function withdrawMTXTokens(address to) external;
-    function updateLockModel(uint256 modelId, uint256 price, uint256 lockDuration, bool active) external;
+
 }
 

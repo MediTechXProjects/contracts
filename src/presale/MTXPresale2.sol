@@ -20,7 +20,6 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
     uint256 public nextModelId;
 
     mapping(address => Purchase[]) public userPurchases;
-    mapping(address => uint256) public claimCursor;
     mapping(address => uint256) public userTotalPurchased;
 
     uint256 public totalBNBCollected;
@@ -34,8 +33,6 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
     uint256 public presaleEndTime;
 
     bool public buyDisabled;
-
-    uint256 public constant CLAIM_BATCH_SIZE = 10;
 
     modifier onlyAdmin() {
         if (!accessRestriction.hasRole(accessRestriction.ADMIN_ROLE(), msg.sender)) {
@@ -95,12 +92,39 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
         }
     }
 
+    function addLockModel(
+        uint256 price,
+        uint256 lockDuration
+    ) external override onlyAdmin {
+        if (price == 0 || lockDuration == 0) revert InvalidAmount();
+
+        _addLockModel(price, lockDuration);
+    }
+
+    function updateLockModel(uint256 modelId, uint256 price, uint256 lockDuration, bool active)
+        external
+        override
+        onlyAdmin
+    {
+        if (price == 0 || lockDuration == 0) revert InvalidAmount();
+
+        LockModel memory model = lockModels[modelId];
+
+        if (model.price == 0) revert InvalidPrice();
+
+        lockModels[modelId].price = price;
+        lockModels[modelId].lockDuration = lockDuration;
+        lockModels[modelId].active = active;
+
+        emit LockModelAdded(modelId, price, lockDuration , active);
+    }
+
 
     /**
      * @notice Set sale limit for MTX tokens (admin only)
      * @param _saleLimit Maximum amount of MTX tokens that can be sold
      */
-    function setSaleLimit(uint256 _saleLimit) external onlyManager {
+    function setSaleLimit(uint256 _saleLimit) external override onlyManager {
         if (_saleLimit == 0 || _saleLimit < totalMTXSold) revert InvalidAmount();
 
         uint256 oldLimit = maxMTXSold;
@@ -109,8 +133,18 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
         emit SaleLimitUpdated(oldLimit, _saleLimit);
     }
 
+    function setMaxBuyPerUser(uint256 _maxBuyPerUser) external override onlyManager {
+        if(_maxBuyPerUser == 0) revert InvalidAmount();
 
-    function setPresaleEndTime(uint256 _endTime) external onlyManager {
+        uint256 oldLimit = maxBuyPerUser;
+        maxBuyPerUser = _maxBuyPerUser;
+
+        emit MaxBuyPerUserUpdated(oldLimit, _maxBuyPerUser);
+    }
+
+
+
+    function setPresaleEndTime(uint256 _endTime) external override onlyManager {
         if (_endTime <= presaleStartTime) revert InvalidTime();
 
         uint256 oldEndTime = presaleEndTime;
@@ -121,6 +155,7 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
 
     function buyExactBNB(uint256 modelId)
         external
+        override
         payable
         nonReentrant
         onlyDuringPresale
@@ -145,7 +180,7 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
         _recordPurchase(msg.sender, mtxAmount, msg.value, model,modelId);
     }
 
-    function buyExactMTX(uint256 mtxWanted, uint256 modelId) external payable nonReentrant onlyDuringPresale buyEnabled {
+    function buyExactMTX(uint256 mtxWanted, uint256 modelId) external override payable nonReentrant onlyDuringPresale buyEnabled {
         if (mtxWanted == 0) revert InvalidAmount();
 
         LockModel memory model = lockModels[modelId];
@@ -179,32 +214,32 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
 
 
 
-    function claim() external nonReentrant {
+    function claim(uint256 from, uint256 to) external override nonReentrant {
         Purchase[] storage purchases = userPurchases[msg.sender];
-        uint256 cursor = claimCursor[msg.sender];
 
-        uint256 length = purchases.length - cursor > CLAIM_BATCH_SIZE ? CLAIM_BATCH_SIZE : purchases.length - cursor;
+        if (from > to) revert InvalidAmount();
+
+        if (purchases.length == 0) revert NoTokensToClaim();
+
+        if (to == 0 || to > purchases.length) {
+            to = purchases.length;
+        }
 
         uint256 totalClaimable;
 
-        uint256 newCursor = cursor;
-
-        for (uint256 i = cursor; i < cursor + length; i++) {
+        for (uint256 i = from; i < to; i++) {
 
             Purchase storage p = purchases[i];
 
-            if (block.timestamp < p.unlockTime) break;
+            if (p.claimed) continue;
+            if (block.timestamp < p.unlockTime) continue;
 
-            if (!p.claimed) {
-                p.claimed = true;
-                totalClaimable += p.amount;
-                newCursor = i + 1;
+            p.claimed = true;
+            totalClaimable += p.amount;
 
-                emit TokensClaimed(msg.sender, p.amount, i ,p.model);
-            }
+            emit TokensClaimed(msg.sender, p.amount, i, p.model);
         }
 
-        claimCursor[msg.sender] = newCursor;
         totalClaimed += totalClaimable;
 
         if (totalClaimable == 0) revert NoTokensToClaim();
@@ -243,36 +278,10 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
         emit TokensPurchased(user, bnbAmount, mtxAmount, modelId);
     }
 
-
-    function addLockModel(
-        uint256 price,
-        uint256 lockDuration
-    ) external override onlyAdmin {
-        if (price == 0 || lockDuration == 0) revert InvalidAmount();
-
-        _addLockModel(price, lockDuration);
-    }
-
-    function updateLockModel(uint256 modelId, uint256 price, uint256 lockDuration, bool active)
-        external
-        override
-        onlyAdmin
-    {
-        if (price == 0 || lockDuration == 0) revert InvalidAmount();
-
-        LockModel memory model = lockModels[modelId];
-
-        if (model.price == 0) revert InvalidPrice();
-
-        lockModels[modelId].price = price;
-        lockModels[modelId].lockDuration = lockDuration;
-        lockModels[modelId].active = active;
-
-        emit LockModelAdded(modelId, price, lockDuration , active);
-    }
-
     function setBuyDisabled(bool _disabled) external override onlyManager {
         buyDisabled = _disabled;
+
+        emit BuyDisabledUpdated(_disabled);
     }
 
     /**
@@ -313,23 +322,6 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
         if (!success) revert TransferFailed();
 
         emit MTXTokensWithdrawn(to, withdrawableAmount);
-    }
-
-    function getClaimStatus(address user)
-        external
-        view
-        returns (
-            uint256 cursor,
-            uint256 total,
-            uint256 nextUnlock
-        )
-    {
-        cursor = claimCursor[user];
-        total = userPurchases[user].length;
-
-        if (cursor < total) {
-            nextUnlock = userPurchases[user][cursor].unlockTime;
-        }
     }
 
     function _addLockModel(uint256 price, uint256 lockDuration) private {
