@@ -12,28 +12,27 @@ contract DeployPresale2 is Script {
         address bnbUsdPriceFeed = 0x694AA1769357215DE4FAC081bf1f309aDC325306;
         
         uint256 presaleStartTime = block.timestamp;
-        uint256 presaleEndTime = block.timestamp + 2 days;
+        uint256 presaleEndTime = block.timestamp + 365 days;
 
         // Lock model prices (in USD with 18 decimals)
-        uint256 priceSixMonths = 0.00025e18;
-        uint256 priceThreeMonths = 0.0003e18;
-        uint256 priceMonthlyVesting = 0.00035e18;
+        uint256 price3Days = 0.057e18;
+        uint256 price12Months = 0.044e18;
+        uint256 price18Months = 0.038e18;
 
-        // Lock durations (in seconds)
-        uint256 lockDurationSixMonths = 6 hours; 
-        uint256 lockDurationThreeMonths = 3 hours;
-        uint256 lockDurationMonthly = 1 hours;
+        uint256 lockDuration3Days = 3 days; 
+        uint256 lockDuration12Months = 12 * 30 days;
+        uint256 lockDuration18Months = 18 * 30 days;
 
         // Prepare arrays for constructor
         uint256[] memory prices = new uint256[](3);
-        prices[0] = priceSixMonths;
-        prices[1] = priceThreeMonths;
-        prices[2] = priceMonthlyVesting;
+        prices[0] = price3Days;
+        prices[1] = price12Months;
+        prices[2] = price18Months;
 
         uint256[] memory lockDurations = new uint256[](3);
-        lockDurations[0] = lockDurationSixMonths;
-        lockDurations[1] = lockDurationThreeMonths;
-        lockDurations[2] = lockDurationMonthly;
+        lockDurations[0] = lockDuration3Days;
+        lockDurations[1] = lockDuration12Months;
+        lockDurations[2] = lockDuration18Months;
 
         vm.startBroadcast(vm.envUint("PRIVATE_KEY"));
         
