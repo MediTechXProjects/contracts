@@ -61,6 +61,8 @@ interface IMTXPresale2 {
     function setBuyDisabled(bool _disabled) external;
     function withdrawBNB(address to) external;
     function withdrawMTXTokens(address to) external;
+    function setMaxBuyTestModelUsd(uint256 _maxBuyTestModelUsd) external;
+
 
 }
 

@@ -120,6 +120,9 @@ contract MTXPresale2Test is Test {
         vm.prank(manager);
         mtxToken.addToWhitelist(treasury);
 
+        vm.prank(manager);
+        presale.setMaxBuyTestModelUsd(1_000_000_000e18);
+
         // Transfer tokens to presale contract
         vm.startPrank(treasury);
         mtxToken.transfer(address(presale), 50_000_000 * 10**18);
@@ -1429,6 +1432,251 @@ contract MTXPresale2Test is Test {
         presale.claim(0, 999);
         
         assertEq(mtxToken.balanceOf(buyer1), 6000 * 10**18);
+    }
+
+    // ============ SETMAXBUYTESTMODELUSD TESTS ============
+
+
+    function testSetMaxBuyTestModelUsd() public {
+        uint256 newLimit = 200e18;
+        vm.prank(manager);
+        presale.setMaxBuyTestModelUsd(newLimit);
+
+        assertEq(presale.maxBuyTestModelUsd(), newLimit);
+    }
+
+    function testSetMaxBuyTestModelUsdRevertsForNonManager() public {
+        vm.prank(buyer1);
+        vm.expectRevert(IMTXPresale2.CallerNotManager.selector);
+        presale.setMaxBuyTestModelUsd(200e18);
+    }
+
+    function testSetMaxBuyTestModelUsdRevertsWithZero() public {
+        vm.prank(manager);
+        vm.expectRevert(IMTXPresale2.InvalidAmount.selector);
+        presale.setMaxBuyTestModelUsd(0);
+    }
+
+    function testSetMaxBuyTestModelUsdCanBeUpdatedMultipleTimes() public {
+        uint256 firstLimit = 200e18;
+        vm.prank(manager);
+        presale.setMaxBuyTestModelUsd(firstLimit);
+        assertEq(presale.maxBuyTestModelUsd(), firstLimit);
+
+        uint256 secondLimit = 500e18;
+        vm.prank(manager);
+        presale.setMaxBuyTestModelUsd(secondLimit);
+        assertEq(presale.maxBuyTestModelUsd(), secondLimit);
+    }
+
+    // ============ MAXBUYTESTMODELUSD CHECK IN BUYEXACTBNB TESTS ============
+
+    function testBuyExactBNBWithModelId0EnforcesMaxBuyTestModelUsd() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        // Set a specific limit for test model
+        uint256 testLimit = 100e18; // $100 USD
+        vm.prank(manager);
+        presale.setMaxBuyTestModelUsd(testLimit);
+
+        uint256 bnbAmount = (testLimit * 1e8) / BNB_PRICE_USD;
+        
+        vm.prank(buyer1);
+        presale.buyExactBNB{value: 0.1 ether}(modelId0);
+
+        assertEq(presale.userBuyModelTest(buyer1), 30e18);
+    }
+
+    function testBuyExactBNBWithModelId0RevertsWhenExceedingMaxBuyTestModelUsd() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        uint256 testLimit = 100e18;
+        vm.prank(manager);
+        presale.setMaxBuyTestModelUsd(testLimit);
+
+        uint256 bnbAmount = (testLimit * 1e8) / BNB_PRICE_USD + 0.1 ether;
+        
+        vm.prank(buyer1);
+        vm.expectRevert("You can only buy a limited amount of tokens for test model");
+        presale.buyExactBNB{value: bnbAmount}(modelId0);
+    }
+
+    function testBuyExactBNBWithModelId0AllowsMultiplePurchasesUpToLimit() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        uint256 testLimit = 100e18;
+        vm.prank(manager);
+        presale.setMaxBuyTestModelUsd(testLimit);
+        
+        vm.prank(buyer1);
+        presale.buyExactBNB{value: 0.1 ether}(modelId0);
+        assertEq(presale.userBuyModelTest(buyer1), 30e18);
+
+        vm.prank(buyer1);
+        presale.buyExactBNB{value: 0.1 ether}(modelId0);
+        assertEq(presale.userBuyModelTest(buyer1), 60e18);
+
+        
+        vm.prank(buyer1);
+        vm.expectRevert("You can only buy a limited amount of tokens for test model");
+        presale.buyExactBNB{value: 0.2 ether}(modelId0);
+    }
+
+    function testBuyExactBNBWithModelId0AllowsExactlyAtLimit() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        uint256 testLimit = 100e18;
+        vm.prank(manager);
+        presale.setMaxBuyTestModelUsd(testLimit);
+
+        
+        vm.prank(buyer1);
+        presale.buyExactBNB{value: 0.3 ether}(modelId0);
+
+        assertEq(presale.userBuyModelTest(buyer1), 90e18);
+    }
+
+    function testBuyExactBNBWithModelId0CheckOnlyAppliesToModelId0() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        // Set a very low limit for test model
+        uint256 testLimit = 10e18; // $10 USD
+        vm.prank(manager);
+        presale.setMaxBuyTestModelUsd(testLimit);
+
+        // Buy with modelId1 (should not be restricted by maxBuyTestModelUsd)
+        uint256 largeBnbAmount = 10 ether; // Much more than $10 USD
+        vm.prank(buyer1);
+        presale.buyExactBNB{value: largeBnbAmount}(modelId1);
+
+        // Should succeed and userBuyModelTest should still be 0 for modelId1
+        assertEq(presale.userBuyModelTest(buyer1), 0);
+        assertGt(presale.userTotalPurchased(buyer1), 0);
+    }
+
+    function testBuyExactBNBWithModelId0IsPerUserNotGlobal() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        // Set a specific limit for test model
+        uint256 testLimit = 100e18; // $100 USD
+        vm.prank(manager);
+        presale.setMaxBuyTestModelUsd(testLimit);
+
+
+        vm.prank(buyer1);
+        presale.buyExactBNB{value: 0.1 ether}(modelId0);
+        assertEq(presale.userBuyModelTest(buyer1), 30e18);
+
+        // Buyer2 should also be able to buy at limit (limit is per user)
+        vm.prank(buyer2);
+        presale.buyExactBNB{value: 0.1 ether}(modelId0);
+        assertEq(presale.userBuyModelTest(buyer2), 30e18);
+    }
+
+
+    function testBuyExactMTXWithModelId0EnforcesMaxBuyTestModelUsd() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        uint256 testLimit = 100e18;
+        vm.prank(manager);
+        presale.setMaxBuyTestModelUsd(testLimit);
+
+
+        uint256 mtxWanted = 1000 * 10**18;
+        uint256 usdRequired1 = (mtxWanted * PRICE_SIX_MONTHS) / 1e18;
+
+        
+        vm.prank(buyer1);
+        presale.buyExactMTX{value: 1 ether}(mtxWanted, modelId0);
+
+        assertEq(presale.userBuyModelTest(buyer1), usdRequired1);
+    }
+
+    function testBuyExactMTXWithModelId0RevertsWhenExceedingMaxBuyTestModelUsd() public {
+        vm.warp(presaleStartTime + 1 days);
+
+        uint256 testLimit = 100e18; // $100 USD
+        vm.prank(manager);
+        presale.setMaxBuyTestModelUsd(testLimit);
+
+        uint256 mtxWanted = (testLimit * 1e18) / PRICE_SIX_MONTHS + 1000e18; // Exceeds limit
+        uint256 usdRequired = (mtxWanted * PRICE_SIX_MONTHS) / 1e18;
+        uint256 bnbRequired = (usdRequired * 1e8) / BNB_PRICE_USD;
+        
+        vm.prank(buyer1);
+        vm.expectRevert("You can only buy a limited amount of tokens for test model");
+        presale.buyExactMTX{value: bnbRequired + 1 ether}(mtxWanted, modelId0);
+    }
+
+    function testBuyExactMTXWithModelId0AllowsMultiplePurchasesUpToLimit() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        uint256 testLimit = 100e18;
+        vm.prank(manager);
+        presale.setMaxBuyTestModelUsd(testLimit);
+
+        uint256 mtxWanted = 1000 * 10**18;
+        uint256 usdRequired1 = (mtxWanted * PRICE_SIX_MONTHS) / 1e18;
+
+        
+        vm.prank(buyer1);
+        presale.buyExactMTX{value: 1 ether}(mtxWanted, modelId0);
+        assertEq(presale.userBuyModelTest(buyer1), usdRequired1);
+
+        
+        vm.prank(buyer1);
+        presale.buyExactMTX{value: 1 ether}(mtxWanted, modelId0);
+        assertEq(presale.userBuyModelTest(buyer1), usdRequired1 * 2);
+
+
+        vm.prank(buyer1);
+        vm.expectRevert("You can only buy a limited amount of tokens for test model");
+        presale.buyExactMTX{value: 1 ether}(mtxWanted, modelId0);
+    }
+
+    function testBuyExactMTXWithModelId0CheckOnlyAppliesToModelId0() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        // Set a very low limit for test model
+        uint256 testLimit = 10e18; // $10 USD
+        vm.prank(manager);
+        presale.setMaxBuyTestModelUsd(testLimit);
+
+        // Buy with modelId1 (should not be restricted by maxBuyTestModelUsd)
+        uint256 largeMtxWanted = 100_000e18; // Much more than $10 USD worth
+        uint256 usdRequired = (largeMtxWanted * PRICE_THREE_MONTHS) / 1e18;
+        uint256 bnbRequired = (usdRequired * 1e8) / BNB_PRICE_USD;
+        
+        vm.prank(buyer1);
+        presale.buyExactMTX{value: bnbRequired + 1 ether}(largeMtxWanted, modelId1);
+
+        // Should succeed and userBuyModelTest should still be 0 for modelId1
+        assertEq(presale.userBuyModelTest(buyer1), 0);
+        assertGt(presale.userTotalPurchased(buyer1), 0);
+    }
+
+    function testBuyExactMTXWithModelId0IsPerUserNotGlobal() public {
+        vm.warp(presaleStartTime + 1 days);
+        
+        uint256 testLimit = 100e18;
+        vm.prank(manager);
+        presale.setMaxBuyTestModelUsd(testLimit);
+
+        uint256 mtxWanted = 1000 * 10**18;
+        uint256 usdRequired1 = (mtxWanted * PRICE_SIX_MONTHS) / 1e18;
+
+        vm.prank(buyer1);
+        presale.buyExactMTX{value: 1 ether}(mtxWanted, modelId0);
+        assertEq(presale.userBuyModelTest(buyer1), usdRequired1);
+
+        vm.prank(buyer2);
+        vm.expectRevert("You can only buy a limited amount of tokens for test model");
+        presale.buyExactMTX{value: 50 ether}(100_000 * 10**18, modelId0);
+
+        vm.prank(buyer2);
+        presale.buyExactMTX{value: 50 ether}(100_000 * 10**18, modelId1);
+
+        assertEq(presale.userBuyModelTest(buyer2), 0);
     }
 }
 

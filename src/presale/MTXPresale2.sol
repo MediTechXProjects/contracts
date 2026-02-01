@@ -22,12 +22,15 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
     mapping(address => Purchase[]) public userPurchases;
     mapping(address => uint256) public userTotalPurchased;
 
+    mapping(address => uint256) public userBuyModelTest;
+
     uint256 public totalBNBCollected;
     uint256 public totalMTXSold;
     uint256 public totalClaimed;
 
     uint256 public maxMTXSold = 50_000_000e18;
     uint256 public maxBuyPerUser = 10_000_000e18;
+    uint256 public maxBuyTestModelUsd = 100e18;
 
     uint256 public presaleStartTime;
     uint256 public presaleEndTime;
@@ -142,6 +145,12 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
         emit MaxBuyPerUserUpdated(oldLimit, _maxBuyPerUser);
     }
 
+    function setMaxBuyTestModelUsd(uint256 _maxBuyTestModelUsd) external override onlyManager {
+        if(_maxBuyTestModelUsd == 0) revert InvalidAmount();
+
+        maxBuyTestModelUsd = _maxBuyTestModelUsd;
+    }
+
 
 
     function setPresaleEndTime(uint256 _endTime) external override onlyManager {
@@ -175,6 +184,17 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
         uint256 usdValue = (msg.value * uint256(bnbUsd)) / 1e8;
         uint256 mtxAmount = (usdValue * 1e18) / model.price;
 
+
+        if (modelId == 0) {
+            require(
+                userBuyModelTest[msg.sender] + usdValue <= maxBuyTestModelUsd,
+                "You can only buy a limited amount of tokens for test model"
+            );
+
+            userBuyModelTest[msg.sender] += usdValue;
+        }
+
+
         if (mtxAmount == 0) revert InvalidAmount();
 
         _recordPurchase(msg.sender, mtxAmount, msg.value, model,modelId);
@@ -197,6 +217,16 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
 
         // BNB required (oracle has 8 decimals)
         uint256 bnbRequired = (usdRequired * 1e8) / uint256(bnbUsd);
+
+        if (modelId == 0) {
+            require(
+                userBuyModelTest[msg.sender] + usdRequired <= maxBuyTestModelUsd,
+                "You can only buy a limited amount of tokens for test model"
+            );
+
+            userBuyModelTest[msg.sender] += usdRequired;
+        }
+
 
         if (msg.value < bnbRequired) revert InsufficientBNBBalance();
 
@@ -260,7 +290,6 @@ contract MTXPresale2 is IMTXPresale2, ReentrancyGuard {
         if (totalMTXSold + mtxAmount > maxMTXSold) revert SaleLimitExceeded();
         
         if (userTotalPurchased[user] + mtxAmount > maxBuyPerUser) revert MaxBuyPerUserExceeded();
-        
 
         userPurchases[user].push(
             Purchase({
