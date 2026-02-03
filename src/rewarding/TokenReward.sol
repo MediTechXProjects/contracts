@@ -9,20 +9,13 @@ import { AccessRestriction } from "../accessRistriction/AccessRestriction.sol";
 contract MTXReward is ReentrancyGuard {
     using ECDSA for bytes32;
 
-    /*//////////////////////////////////////////////////////////////
-                                STATE
-    //////////////////////////////////////////////////////////////*/
+    IERC20 public mtxToken;
+    AccessRestriction public accessRestriction;
 
-    IERC20 public immutable mtxToken;
-    AccessRestriction public immutable accessRestriction;
-
-    /// @notice Off-chain signer (backend / multisig)
     address public rewardSigner;
 
-    /// @notice EIP-712 domain separator
     bytes32 public immutable DOMAIN_SEPARATOR;
 
-    /// @notice Nonce per user (prevents replay)
     mapping(address => uint256) public nonces;
 
     bytes32 private constant EIP712_DOMAIN_TYPEHASH =
@@ -43,8 +36,8 @@ contract MTXReward is ReentrancyGuard {
 
     event RewardClaimed(
         address indexed user,
-        uint256 amount,
-        uint256 nonce
+        uint256 indexed amount,
+        uint256 indexed nonce
     );
 
     event RewardSignerUpdated(
@@ -53,14 +46,13 @@ contract MTXReward is ReentrancyGuard {
     );
 
     modifier onlyAdmin() {
-        if (
-            !accessRestriction.hasRole(
+        require(
+            accessRestriction.hasRole(
                 accessRestriction.ADMIN_ROLE(),
                 msg.sender
-            )
-        ) {
-            revert("CallerNotAdmin");
-        }
+            ),
+            "Caller not admin"
+        );
         _;
     }
 
@@ -71,13 +63,12 @@ contract MTXReward is ReentrancyGuard {
         string memory name,
         string memory version
     ) {
-        if (
-            _token == address(0) ||
-            _accessRestriction == address(0) ||
-            _rewardSigner == address(0)
-        ) {
-            revert("InvalidAddress");
-        }
+        require(
+            _token != address(0) &&
+            _accessRestriction != address(0) &&
+            _rewardSigner != address(0),
+            "InvalidAddress"
+        );
 
         mtxToken = IERC20(_token);
         accessRestriction = AccessRestriction(_accessRestriction);
@@ -95,7 +86,7 @@ contract MTXReward is ReentrancyGuard {
     }
 
     function setRewardSigner(address newSigner) external onlyAdmin {
-        if (newSigner == address(0)) revert("InvalidAddress");
+        require(newSigner != address(0), "InvalidAddress");
 
         address oldSigner = rewardSigner;
         rewardSigner = newSigner;
@@ -105,19 +96,19 @@ contract MTXReward is ReentrancyGuard {
 
     function withdrawRemainingTokens(address to) external onlyAdmin {
         uint256 balance = mtxToken.balanceOf(address(this));
-        if (balance == 0) revert("NothingToWithdraw");
+        require(balance != 0, "NothingToWithdraw");
 
         bool success = mtxToken.transfer(to, balance);
-        if (!success) revert("TransferFailed");
+        require(success, "TransferFailed");
     }
 
     function claimReward(
         Reward calldata reward,
         bytes calldata signature
     ) external nonReentrant {
-        if (reward.user != msg.sender) revert("InvalidUser");
-        if (reward.nonce != nonces[msg.sender]) revert("InvalidNonce");
-        if (reward.amount == 0) revert("InvalidAmount");
+        require(reward.user == msg.sender, "InvalidUser");
+        require(reward.nonce == nonces[msg.sender], "InvalidNonce");
+        require(reward.amount != 0, "InvalidAmount");
 
         bytes32 structHash = keccak256(
             abi.encode(
@@ -134,13 +125,13 @@ contract MTXReward is ReentrancyGuard {
 
         address signer = digest.recover(signature);
 
-        if (signer != rewardSigner) revert("InvalidSignature");
+        require(signer == rewardSigner, "InvalidSignature");
 
         nonces[msg.sender] += 1;
 
         bool success = mtxToken.transfer(msg.sender, reward.amount);
-        
-        if (!success) revert("TransferFailed");
+
+        require(success, "TransferFailed");
 
         emit RewardClaimed(
             msg.sender,
