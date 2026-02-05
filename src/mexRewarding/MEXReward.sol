@@ -5,8 +5,9 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import { AccessRestriction } from "../accessRistriction/AccessRestriction.sol";
+import { IMEXReward } from "./IMEXReward.sol";
 
-contract MTXReward is ReentrancyGuard {
+contract MEXReward is IMEXReward, ReentrancyGuard {
     using ECDSA for bytes32;
 
     IERC20 public mtxToken;
@@ -17,6 +18,7 @@ contract MTXReward is ReentrancyGuard {
     bytes32 public immutable DOMAIN_SEPARATOR;
 
     mapping(address => uint256) public nonces;
+    mapping(address => uint256) public userRewards;
 
     bytes32 private constant EIP712_DOMAIN_TYPEHASH =
         keccak256(
@@ -27,23 +29,6 @@ contract MTXReward is ReentrancyGuard {
         keccak256(
             "Reward(address user,uint256 amount,uint256 nonce)"
         );
-
-    struct Reward {
-        address user;
-        uint256 amount;
-        uint256 nonce;
-    }
-
-    event RewardClaimed(
-        address indexed user,
-        uint256 indexed amount,
-        uint256 indexed nonce
-    );
-
-    event RewardSignerUpdated(
-        address indexed oldSigner,
-        address indexed newSigner
-    );
 
     modifier onlyAdmin() {
         require(
@@ -85,7 +70,7 @@ contract MTXReward is ReentrancyGuard {
         );
     }
 
-    function setRewardSigner(address newSigner) external onlyAdmin {
+    function setRewardSigner(address newSigner) external override onlyAdmin {
         require(newSigner != address(0), "InvalidAddress");
 
         address oldSigner = rewardSigner;
@@ -94,7 +79,7 @@ contract MTXReward is ReentrancyGuard {
         emit RewardSignerUpdated(oldSigner, newSigner);
     }
 
-    function withdrawRemainingTokens(address to) external onlyAdmin {
+    function withdrawRemainingTokens(address to) external override onlyAdmin {
         uint256 balance = mtxToken.balanceOf(address(this));
         require(balance != 0, "NothingToWithdraw");
 
@@ -105,7 +90,7 @@ contract MTXReward is ReentrancyGuard {
     function claimReward(
         Reward calldata reward,
         bytes calldata signature
-    ) external nonReentrant {
+    ) external override nonReentrant {
         require(reward.user == msg.sender, "InvalidUser");
         require(reward.nonce == nonces[msg.sender], "InvalidNonce");
         require(reward.amount != 0, "InvalidAmount");
@@ -128,6 +113,7 @@ contract MTXReward is ReentrancyGuard {
         require(signer == rewardSigner, "InvalidSignature");
 
         nonces[msg.sender] += 1;
+        userRewards[msg.sender] += reward.amount;
 
         bool success = mtxToken.transfer(msg.sender, reward.amount);
 
@@ -136,7 +122,8 @@ contract MTXReward is ReentrancyGuard {
         emit RewardClaimed(
             msg.sender,
             reward.amount,
-            reward.nonce
+            reward.nonce,
+            signature
         );
     }
 }

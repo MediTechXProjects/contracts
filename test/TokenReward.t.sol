@@ -2,7 +2,8 @@
 pragma solidity ^0.8.20;
 
 import {Test, console} from "forge-std/Test.sol";
-import {MTXReward} from "../src/rewarding/TokenReward.sol";
+import {MEXReward} from "../src/mexRewarding/MEXReward.sol";
+import {IMEXReward} from "../src/mexRewarding/IMEXReward.sol";
 import {MTXToken} from "../src/mTXToken/MTXToken.sol";
 import {AccessRestriction} from "../src/accessRistriction/AccessRestriction.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -13,7 +14,7 @@ import {MockLayerZeroEndpointV2} from "../src/mock/MockLayerZeroEndpointV2.sol";
 contract TokenRewardTest is Test {
     using ECDSA for bytes32;
 
-    MTXReward public reward;
+    MEXReward public reward;
     MTXToken public mtxToken;
     AccessRestriction public accessRestriction;
 
@@ -25,7 +26,7 @@ contract TokenRewardTest is Test {
     address public treasury;
     address public manager;
 
-    string public constant DOMAIN_NAME = "MTXReward";
+    string public constant DOMAIN_NAME = "MEXReward";
     string public constant DOMAIN_VERSION = "1";
 
     bytes32 public constant REWARD_TYPEHASH =
@@ -67,8 +68,8 @@ contract TokenRewardTest is Test {
         );
         vm.stopPrank();
 
-        // Deploy MTXReward
-        reward = new MTXReward(
+        // Deploy MEXReward
+        reward = new MEXReward(
             address(mtxToken),
             address(accessRestriction),
             rewardSigner,
@@ -151,7 +152,7 @@ contract TokenRewardTest is Test {
 
     function testConstructorRevertsWithZeroToken() public {
         vm.expectRevert("InvalidAddress");
-        new MTXReward(
+        new MEXReward(
             address(0),
             address(accessRestriction),
             rewardSigner,
@@ -162,7 +163,7 @@ contract TokenRewardTest is Test {
 
     function testConstructorRevertsWithZeroAccessRestriction() public {
         vm.expectRevert("InvalidAddress");
-        new MTXReward(
+        new MEXReward(
             address(mtxToken),
             address(0),
             rewardSigner,
@@ -173,7 +174,7 @@ contract TokenRewardTest is Test {
 
     function testConstructorRevertsWithZeroRewardSigner() public {
         vm.expectRevert("InvalidAddress");
-        new MTXReward(
+        new MEXReward(
             address(mtxToken),
             address(accessRestriction),
             address(0),
@@ -182,15 +183,13 @@ contract TokenRewardTest is Test {
         );
     }
 
-    // ============ SETREWARDSIGNER TESTS ============
-
     function testSetRewardSigner() public {
         uint256 newSignerPrivateKey = 12345;
         address newSigner = vm.addr(newSignerPrivateKey);
         vm.startPrank(admin);
 
         vm.expectEmit(true, true, false, true);
-        emit MTXReward.RewardSignerUpdated(rewardSigner, newSigner);
+        emit IMEXReward.RewardSignerUpdated(rewardSigner, newSigner);
         reward.setRewardSigner(newSigner);
 
         assertEq(reward.rewardSigner(), newSigner);
@@ -259,7 +258,7 @@ contract TokenRewardTest is Test {
             0
         );
         reward.claimReward(
-            MTXReward.Reward({
+            IMEXReward.Reward({
                 user: user1,
                 amount: rewardAmount,
                 nonce: 0
@@ -297,9 +296,9 @@ contract TokenRewardTest is Test {
 
         vm.startPrank(user1);
         vm.expectEmit(true, true, true, true);
-        emit MTXReward.RewardClaimed(user1, rewardAmount, nonce);
+        emit IMEXReward.RewardClaimed(user1, rewardAmount, nonce , signature);
         reward.claimReward(
-            MTXReward.Reward({
+            IMEXReward.Reward({
                 user: user1,
                 amount: rewardAmount,
                 nonce: nonce
@@ -333,7 +332,7 @@ contract TokenRewardTest is Test {
             0
         );
         reward.claimReward(
-            MTXReward.Reward({
+            IMEXReward.Reward({
                 user: user1,
                 amount: rewardAmount1,
                 nonce: 0
@@ -341,6 +340,12 @@ contract TokenRewardTest is Test {
             signature1
         );
         assertEq(reward.nonces(user1), 1);
+        assertEq(reward.userRewards(user1), rewardAmount1);
+
+        assertEq(
+            mtxToken.balanceOf(user1),
+            rewardAmount1
+        );
 
         // Second claim
         bytes memory signature2 = signReward(
@@ -350,7 +355,7 @@ contract TokenRewardTest is Test {
             1
         );
         reward.claimReward(
-            MTXReward.Reward({
+            IMEXReward.Reward({
                 user: user1,
                 amount: rewardAmount2,
                 nonce: 1
@@ -367,20 +372,142 @@ contract TokenRewardTest is Test {
             2
         );
         reward.claimReward(
-            MTXReward.Reward({
+            IMEXReward.Reward({
                 user: user1,
                 amount: rewardAmount3,
                 nonce: 2
             }),
             signature3
         );
+        
+        vm.expectRevert("InvalidNonce");
+        reward.claimReward(
+            IMEXReward.Reward({
+                user: user1,
+                amount: rewardAmount3,
+                nonce: 2
+            }),
+            signature3
+        );
+        
+
         vm.stopPrank();
 
         assertEq(reward.nonces(user1), 3);
+
+        vm.startPrank(user1);
+        bytes memory signature4 = signReward(
+            rewardSignerPrivateKey,
+            user1,
+            0,
+            4
+        );
+
+        vm.expectRevert("InvalidNonce");
+        
+        reward.claimReward(
+            IMEXReward.Reward({
+                user: user1,
+                amount: rewardAmount2,
+                nonce: 4
+            }),
+            signature4
+        );
+
+
+        signature4 = signReward(
+            rewardSignerPrivateKey,
+            user1,
+            0,
+            3
+        );
+
+        vm.expectRevert("InvalidSignature");
+        
+        reward.claimReward(
+            IMEXReward.Reward({
+                user: user1,
+                amount: rewardAmount2,
+                nonce: 3
+            }),
+            signature4
+        );
+
+        signature4 = signReward(
+            rewardSignerPrivateKey,
+            user1,
+            rewardAmount2,
+            3
+        );
+
+        vm.expectRevert("InvalidSignature");
+        reward.claimReward(
+            IMEXReward.Reward({
+                user: user1,
+                amount: rewardAmount2 + 100,
+                nonce: 3
+            }),
+            signature4
+        );
+
+
+        signature4 = signReward(
+            rewardSignerPrivateKey,
+            user2,
+            rewardAmount2,
+            3
+        );
+
+        vm.expectRevert("InvalidSignature");
+        reward.claimReward(
+            IMEXReward.Reward({
+                user: user1,
+                amount: rewardAmount2,
+                nonce: 3
+            }),
+            signature4
+        );
+
+        vm.stopPrank();
+
+        vm.startPrank(user2);
+
+        signature4 = signReward(
+            rewardSignerPrivateKey,
+            user2,
+            rewardAmount2,
+            0
+        );
+
+        reward.claimReward(
+            IMEXReward.Reward({
+                user: user2,
+                amount: rewardAmount2,
+                nonce: 0
+            }),
+            signature4
+        );
+
+        assertEq(
+            mtxToken.balanceOf(user2),
+            rewardAmount2
+        );
+
+        assertEq(reward.userRewards(user2), rewardAmount2);
+
+        assertEq(reward.nonces(user2), 1);
+
+        vm.stopPrank();
+
+        assertEq(reward.nonces(user1), 3);
+
         assertEq(
             mtxToken.balanceOf(user1),
             rewardAmount1 + rewardAmount2 + rewardAmount3
         );
+
+        assertEq(reward.userRewards(user1), rewardAmount1 + rewardAmount2 + rewardAmount3);
+        
     }
 
     function testClaimRewardRevertsWithInvalidUser() public {
@@ -397,7 +524,7 @@ contract TokenRewardTest is Test {
         vm.startPrank(user2);
         vm.expectRevert("InvalidUser");
         reward.claimReward(
-            MTXReward.Reward({
+            IMEXReward.Reward({
                 user: user1,
                 amount: rewardAmount,
                 nonce: 0
@@ -419,7 +546,7 @@ contract TokenRewardTest is Test {
             0
         );
         reward.claimReward(
-            MTXReward.Reward({
+            IMEXReward.Reward({
                 user: user1,
                 amount: rewardAmount,
                 nonce: 0
@@ -430,7 +557,7 @@ contract TokenRewardTest is Test {
         // Try to claim again with nonce 0 (should fail)
         vm.expectRevert("InvalidNonce");
         reward.claimReward(
-            MTXReward.Reward({
+            IMEXReward.Reward({
                 user: user1,
                 amount: rewardAmount,
                 nonce: 0
@@ -447,7 +574,7 @@ contract TokenRewardTest is Test {
         );
         vm.expectRevert("InvalidNonce");
         reward.claimReward(
-            MTXReward.Reward({
+            IMEXReward.Reward({
                 user: user1,
                 amount: rewardAmount,
                 nonce: 2
@@ -468,7 +595,7 @@ contract TokenRewardTest is Test {
         vm.startPrank(user1);
         vm.expectRevert("InvalidAmount");
         reward.claimReward(
-            MTXReward.Reward({
+            IMEXReward.Reward({
                 user: user1,
                 amount: 0,
                 nonce: 0
@@ -492,7 +619,7 @@ contract TokenRewardTest is Test {
         vm.startPrank(user1);
         vm.expectRevert("InvalidSignature");
         reward.claimReward(
-            MTXReward.Reward({
+            IMEXReward.Reward({
                 user: user1,
                 amount: rewardAmount,
                 nonce: 0
@@ -523,7 +650,7 @@ contract TokenRewardTest is Test {
         vm.startPrank(user1);
         vm.expectRevert("InvalidSignature");
         reward.claimReward(
-            MTXReward.Reward({
+            IMEXReward.Reward({
                 user: user1,
                 amount: rewardAmount,
                 nonce: 0
@@ -553,7 +680,7 @@ contract TokenRewardTest is Test {
 
         vm.startPrank(user1);
         reward.claimReward(
-            MTXReward.Reward({
+            IMEXReward.Reward({
                 user: user1,
                 amount: rewardAmount,
                 nonce: 0
@@ -578,7 +705,7 @@ contract TokenRewardTest is Test {
             0
         );
         reward.claimReward(
-            MTXReward.Reward({
+            IMEXReward.Reward({
                 user: user1,
                 amount: rewardAmount1,
                 nonce: 0
@@ -596,7 +723,7 @@ contract TokenRewardTest is Test {
             0
         );
         reward.claimReward(
-            MTXReward.Reward({
+            IMEXReward.Reward({
                 user: user2,
                 amount: rewardAmount2,
                 nonce: 0
@@ -627,7 +754,7 @@ contract TokenRewardTest is Test {
             0
         );
         reward.claimReward(
-            MTXReward.Reward({
+            IMEXReward.Reward({
                 user: user1,
                 amount: rewardAmount,
                 nonce: 0
@@ -644,7 +771,7 @@ contract TokenRewardTest is Test {
             1
         );
         reward.claimReward(
-            MTXReward.Reward({
+            IMEXReward.Reward({
                 user: user1,
                 amount: rewardAmount,
                 nonce: 1
@@ -680,7 +807,7 @@ contract TokenRewardTest is Test {
 
         vm.startPrank(user1);
         reward.claimReward(
-            MTXReward.Reward({
+            IMEXReward.Reward({
                 user: user1,
                 amount: rewardAmount,
                 nonce: 0
@@ -704,7 +831,7 @@ contract TokenRewardTest is Test {
 
         vm.startPrank(user1);
         reward.claimReward(
-            MTXReward.Reward({
+            IMEXReward.Reward({
                 user: user1,
                 amount: rewardAmount,
                 nonce: 0
